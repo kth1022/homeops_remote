@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>HomeOps Remote</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>HomeOps Remote</h1>
+      <p id="serverLine">Kevin-PC</p>
+    </div>
+    <div id="connectionPill" class="pill neutral">Offline</div>
+  </header>
+
+  <main class="layout">
+    <section class="settings-panel" aria-label="Connection">
+      <label>
+        <span>API URL</span>
+        <input id="apiUrl" type="url" inputmode="url" autocomplete="url">
+      </label>
+      <label>
+        <span>Token</span>
+        <input id="apiToken" type="password" autocomplete="current-password">
+      </label>
+      <div class="button-row">
+        <button id="saveSettings" type="button">Save</button>
+        <button id="refreshStatus" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section class="summary-grid" aria-label="Summary">
+      <div class="metric">
+        <span class="metric-label">Network</span>
+        <strong id="networkState">Unknown</strong>
+        <span id="networkMeta">No report loaded</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Home Assistant</span>
+        <strong id="haState">Unknown</strong>
+        <span id="haMeta">No report loaded</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Low Battery</span>
+        <strong id="batteryState">-</strong>
+        <span id="batteryMeta">No report loaded</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Plex Duplicates</span>
+        <strong id="plexDupState">-</strong>
+        <span id="plexDupMeta">No report loaded</span>
+      </div>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Systems</h2>
+          <span id="lastHomeopsRun" class="subtle">-</span>
+        </div>
+        <div id="systemsList" class="system-list"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Home Assistant</h2>
+          <span id="lastHaRun" class="subtle">-</span>
+        </div>
+        <dl class="stats">
+          <div><dt>Version</dt><dd id="haVersion">-</dd></div>
+          <div><dt>Entities</dt><dd id="haEntities">-</dd></div>
+          <div><dt>Unavailable</dt><dd id="haUnavailable">-</dd></div>
+          <div><dt>Services</dt><dd id="haServices">-</dd></div>
+        </dl>
+        <div id="haFindings" class="findings"></div>
+      </article>
+
+      <article class="panel command-panel">
+        <div class="panel-head">
+          <h2>Commands</h2>
+          <span id="commandState" class="subtle">Idle</span>
+        </div>
+        <div id="quickActions" class="quick-actions"></div>
+        <form id="commandForm">
+          <textarea id="commandText" rows="4" placeholder="Type a command or note"></textarea>
+          <div class="button-row">
+            <button id="sendCommand" type="submit">Send</button>
+            <button id="queueMessage" type="button">Queue</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="panel plex-panel">
+        <div class="panel-head">
+          <h2>Plex Duplicates</h2>
+          <span id="plexDupRun" class="subtle">-</span>
+        </div>
+        <dl class="stats">
+          <div><dt>Groups</dt><dd id="plexDupGroups">-</dd></div>
+          <div><dt>Candidates</dt><dd id="plexDupCandidates">-</dd></div>
+          <div><dt>Approved</dt><dd id="plexDupReview">-</dd></div>
+          <div><dt>Ignored</dt><dd id="plexDupApproved">-</dd></div>
+        </dl>
+        <div class="button-row">
+          <button id="scanPlexDuplicates" type="button">Scan</button>
+          <button id="previewPlexDuplicates" class="secondary" type="button">Preview Plan</button>
+          <button id="approvePlexDuplicates" class="secondary" type="button">Quarantine + Rescan</button>
+        </div>
+        <div class="filter-row">
+          <label for="plexDupFilter">Rows</label>
+          <select id="plexDupFilter">
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="swapped">Swapped</option>
+            <option value="ignored">Ignored</option>
+            <option value="manual-review">Manual review</option>
+          </select>
+          <span id="plexDupVisible" class="subtle">-</span>
+        </div>
+        <div id="plexApprovalState" class="subtle approval-line">Approve rows individually, then quarantine approved files and rescan Plex.</div>
+        <div id="plexCleanupPlan" class="cleanup-plan"></div>
+        <div id="plexDupList" class="duplicate-list"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Activity</h2>
+          <span id="activityCount" class="subtle">0</span>
+        </div>
+        <ol id="activityList" class="activity-list"></ol>
+      </article>
+    </section>
+  </main>
+
+  <template id="systemRowTemplate">
+    <div class="system-row">
+      <div>
+        <strong class="system-name"></strong>
+        <span class="system-host"></span>
+      </div>
+      <div class="system-status"></div>
+      <div class="port-list"></div>
+    </div>
+  </template>
+
+  <script src="/app.js?v=14" defer></script>
+</body>
+</html>

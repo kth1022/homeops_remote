@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>Final Delete Verification</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Final Delete Verification</h1>
+      <p id="reportMeta">Loading</p>
+    </div>
+    <div id="connectionPill" class="pill neutral">Loading</div>
+  </header>
+
+  <main class="layout report-layout">
+    <section class="panel report-panel">
+      <div class="panel-head">
+        <h2 id="reportTitle">Report</h2>
+        <span id="reportCount" class="subtle">-</span>
+      </div>
+      <div class="button-row report-toolbar">
+        <button id="showFiles" type="button" class="secondary">Files</button>
+        <button id="showFolders" type="button" class="secondary">Folders</button>
+        <button id="exportDoc" type="button">Export DOC</button>
+        <button id="exportCsv" type="button">Export Spreadsheet</button>
+      </div>
+      <div id="reportList" class="report-list"></div>
+    </section>
+  </main>
+
+  <script src="/final-delete-report.js?v=2" defer></script>
+</body>
+</html>

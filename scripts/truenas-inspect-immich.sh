@@ -1,0 +1,10 @@
+echo '== docker ps =='
+docker ps --filter name=immich --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+echo '== labels =='
+docker inspect immich_server --format '{{json .Config.Labels}}'
+echo '== compose cwd label =='
+docker inspect immich_server --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'
+echo '== compose config files =='
+docker inspect immich_server --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}'
+echo '== find leftovers =='
+ps aux | grep 'find /mnt' | grep -v grep || true

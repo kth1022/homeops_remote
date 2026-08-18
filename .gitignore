@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets.json
+*.secret.json
+*.credential.xml
+*.api-key.xml
+*.token.xml
+
+# HomeOps live configuration and tokens
+config/*.json
+config/*.xml
+remote-app/config/homeops.remote.json
+remote-app/config/*.token.txt
+remote-app/config/gymtracker.github.token.txt
+
+# Runtime output
+logs/
+reports/
+exports/
+backups/
+.uploads/
+uploads/
+
+# HomeOps Remote generated artifacts
+remote-app/dist/
+remote-app/android/build/
+remote-app/android/*.keystore
+*.apk
+*.idsig
+
+# Windows generated binaries
+*.exe
+*.dll
+*.pdb
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

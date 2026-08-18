@@ -1,0 +1,21 @@
+{
+  "listenPrefixes": [
+    "http://127.0.0.1:8787/",
+    "http://192.168.1.86:8787/"
+  ],
+  "homeOpsRoot": "C:\\Users\\kth10\\Documents\\home-ops",
+  "tokenHash": "replace-with-sha256-token-hash-from-New-HomeOpsRemoteToken",
+  "gymTrackerGitHubCredentialTarget": "Gym_Traker_Issues_Token",
+  "gymTrackerGitHubTokenPath": "C:\\Users\\kth10\\Documents\\home-ops\\remote-app\\config\\gymtracker.github.token.txt",
+  "allowedRemoteCidrs": [
+    "127.0.0.1/32",
+    "192.168.1.0/24",
+    "10.8.0.0/24",
+    "100.64.0.0/10"
+  ],
+  "allowedRemoteAddresses": [
+    "::1"
+  ],
+  "allowMutatingActions": false,
+  "commandLogPath": "C:\\Users\\kth10\\Documents\\home-ops\\logs\\remote-commands.jsonl"
+}

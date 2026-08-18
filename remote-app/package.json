@@ -1,0 +1,10 @@
+﻿{
+    "name":  "homeops-remote",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "start":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\server\\Start-HomeOpsRemoteNode.ps1",
+                    "check":  "powershell -NoProfile -ExecutionPolicy Bypass -Command \"\u0026 \u0027C:\\Program Files\\nodejs\\node.exe\u0027 server/homeops-remote.mjs --check-config\""
+                }
+}
