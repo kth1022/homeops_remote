@@ -3,152 +3,213 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#161826">
   <title>HomeOps Remote</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>HomeOps Remote</h1>
-      <p id="serverLine">Kevin-PC</p>
-    </div>
-    <div id="connectionPill" class="pill neutral">Offline</div>
-  </header>
-
-  <main class="layout">
-    <section class="settings-panel" aria-label="Connection">
-      <label>
-        <span>API URL</span>
-        <input id="apiUrl" type="url" inputmode="url" autocomplete="url">
-      </label>
-      <label>
-        <span>Token</span>
-        <input id="apiToken" type="password" autocomplete="current-password">
-      </label>
-      <div class="button-row">
-        <button id="saveSettings" type="button">Save</button>
-        <button id="refreshStatus" type="button">Refresh</button>
+  <div class="shell">
+    <nav class="sidenav" aria-label="Sections">
+      <div class="brand">
+        <img src="/icons/icon.svg" alt="">
+        <span>HomeOps Remote</span>
       </div>
-    </section>
 
-    <section class="summary-grid" aria-label="Summary">
-      <div class="metric">
-        <span class="metric-label">Network</span>
-        <strong id="networkState">Unknown</strong>
-        <span id="networkMeta">No report loaded</span>
+      <div class="nav-list" id="navList">
+        <button class="nav-item active" type="button" data-screen="overview"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><rect x="48" y="48" width="64" height="64" rx="8"></rect><rect x="144" y="48" width="64" height="64" rx="8"></rect><rect x="48" y="144" width="64" height="64" rx="8"></rect><rect x="144" y="144" width="64" height="64" rx="8"></rect></svg><span class="nav-label">Overview</span><span class="nav-badge alarm" id="navBadgeOverview"></span></button>
+        <button class="nav-item" type="button" data-screen="plex"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><rect x="40" y="88" width="176" height="128" rx="8"></rect><path d="M56 40h144l16 48H40Z"></path><line x1="104" y1="40" x2="88" y2="88"></line><line x1="160" y1="40" x2="144" y2="88"></line></svg><span class="nav-label">Plex duplicates</span><span class="nav-badge" id="navBadgePlex"></span></button>
+        <button class="nav-item" type="button" data-screen="systems"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><rect x="32" y="40" width="192" height="72" rx="8"></rect><rect x="32" y="144" width="192" height="72" rx="8"></rect><circle cx="68" cy="76" r="10" fill="currentColor" stroke="none"></circle><circle cx="68" cy="180" r="10" fill="currentColor" stroke="none"></circle></svg><span class="nav-label">Systems</span><span class="nav-badge" id="navBadgeSystems"></span></button>
+        <button class="nav-item" type="button" data-screen="ha"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><path d="M32 108 128 28l96 80"></path><path d="M56 92v104h144V92"></path><line x1="24" y1="228" x2="232" y2="228"></line><path d="M104 196v-52h48v52"></path></svg><span class="nav-label">Home Assistant</span><span class="nav-badge" id="navBadgeHa"></span></button>
+        <button class="nav-item" type="button" data-screen="activity"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><line x1="96" y1="64" x2="216" y2="64"></line><line x1="96" y1="128" x2="216" y2="128"></line><line x1="96" y1="192" x2="216" y2="192"></line><circle cx="44" cy="64" r="10" fill="currentColor" stroke="none"></circle><circle cx="44" cy="128" r="10" fill="currentColor" stroke="none"></circle><circle cx="44" cy="192" r="10" fill="currentColor" stroke="none"></circle></svg><span class="nav-label">Activity</span><span class="nav-badge"></span></button>
+        <button class="nav-item" type="button" data-screen="connection"><svg class="nav-icon" viewBox="0 0 256 256" aria-hidden="true"><line x1="144" y1="112" x2="184" y2="72"></line><path d="M147 43l-24 24 66 66 24-24a47 47 0 00-66-66Z"></path><line x1="112" y1="144" x2="72" y2="184"></line><path d="M43 147l24-24 66 66-24 24a47 47 0 01-66-66Z"></path></svg><span class="nav-label">Connection</span><span class="nav-badge"></span></button>
       </div>
-      <div class="metric">
-        <span class="metric-label">Home Assistant</span>
-        <strong id="haState">Unknown</strong>
-        <span id="haMeta">No report loaded</span>
-      </div>
-      <div class="metric">
-        <span class="metric-label">Low Battery</span>
-        <strong id="batteryState">-</strong>
-        <span id="batteryMeta">No report loaded</span>
-      </div>
-      <div class="metric">
-        <span class="metric-label">Plex Duplicates</span>
-        <strong id="plexDupState">-</strong>
-        <span id="plexDupMeta">No report loaded</span>
-      </div>
-    </section>
 
-    <section class="content-grid">
-      <article class="panel">
-        <div class="panel-head">
-          <h2>Systems</h2>
-          <span id="lastHomeopsRun" class="subtle">-</span>
-        </div>
-        <div id="systemsList" class="system-list"></div>
-      </article>
+      <div class="nav-foot">
+        <div class="conn-line" id="connectionLine"><span class="dot" id="connectionDot"></span><span id="connectionPill">Offline</span></div>
+        <div id="serverLine">Kevin-PC</div>
+        <div id="commandState">Idle</div>
+      </div>
+    </nav>
 
-      <article class="panel">
-        <div class="panel-head">
-          <h2>Home Assistant</h2>
-          <span id="lastHaRun" class="subtle">-</span>
-        </div>
-        <dl class="stats">
-          <div><dt>Version</dt><dd id="haVersion">-</dd></div>
-          <div><dt>Entities</dt><dd id="haEntities">-</dd></div>
-          <div><dt>Unavailable</dt><dd id="haUnavailable">-</dd></div>
-          <div><dt>Services</dt><dd id="haServices">-</dd></div>
-        </dl>
-        <div id="haFindings" class="findings"></div>
-      </article>
+    <main class="stage">
 
-      <article class="panel command-panel">
-        <div class="panel-head">
-          <h2>Commands</h2>
-          <span id="commandState" class="subtle">Idle</span>
-        </div>
-        <div id="quickActions" class="quick-actions"></div>
-        <form id="commandForm">
-          <textarea id="commandText" rows="4" placeholder="Type a command or note"></textarea>
+      <section class="screen active" id="screen-overview">
+        <div class="screen-head">
+          <div class="kicker">Overview</div>
           <div class="button-row">
-            <button id="sendCommand" type="submit">Send</button>
-            <button id="queueMessage" type="button">Queue</button>
+            <span class="subtle" id="lastHomeopsRun">-</span>
+            <button type="button" id="refreshStatus" class="secondary">Refresh</button>
           </div>
-        </form>
-      </article>
+        </div>
 
-      <article class="panel plex-panel">
-        <div class="panel-head">
-          <h2>Plex Duplicates</h2>
-          <span id="plexDupRun" class="subtle">-</span>
+        <div class="verdict">
+          <span class="verdict-bar" id="verdictBar"></span>
+          <div>
+            <h1 id="verdictHeadline">Checking...</h1>
+            <p id="verdictSub">Loading the latest reports from the control PC.</p>
+          </div>
         </div>
-        <dl class="stats">
-          <div><dt>Groups</dt><dd id="plexDupGroups">-</dd></div>
-          <div><dt>Candidates</dt><dd id="plexDupCandidates">-</dd></div>
-          <div><dt>Approved</dt><dd id="plexDupReview">-</dd></div>
-          <div><dt>Ignored</dt><dd id="plexDupApproved">-</dd></div>
-        </dl>
-        <div class="button-row">
-          <button id="scanPlexDuplicates" type="button">Scan</button>
-          <button id="previewPlexDuplicates" class="secondary" type="button">Preview Plan</button>
-          <button id="approvePlexDuplicates" class="secondary" type="button">Quarantine + Rescan</button>
+
+        <div class="rule"></div>
+
+        <div class="overview-grid">
+          <section>
+            <div class="section-label">Needs you</div>
+            <div class="card-list" id="alertList"></div>
+
+            <div class="section-label">Plex library</div>
+            <article class="card">
+              <div class="plex-summary">
+                <div>
+                  <h3 id="plexDupHeadline">No report loaded</h3>
+                  <p id="plexDupMeta">-</p>
+                </div>
+                <span class="plex-count" id="plexDupState">-</span>
+              </div>
+              <div class="button-row" style="margin-top: 17px;">
+                <button type="button" class="primary" data-goto="plex">Review queue</button>
+                <button type="button" id="scanPlexDuplicates">Rescan now</button>
+              </div>
+            </article>
+          </section>
+
+          <aside>
+            <div class="section-label">Everything else</div>
+            <div class="quiet-list" id="quietList"></div>
+            <p class="aside-note">Healthy things stay collapsed. Open a row for the numbers behind it.</p>
+          </aside>
         </div>
+      </section>
+
+      <section class="screen" id="screen-plex">
+        <div class="kicker">Plex duplicates</div>
+        <h1 id="plexHeadline">Duplicate review</h1>
+        <p class="lede">Keep candidates are ranked by resolution, dynamic range, codec, bitrate, audio channels, size and date added. A decision only stages the row - files move at quarantine, and deletion stays behind its own gate.</p>
+
+        <div class="plan" id="plexCleanupPlan"></div>
+
         <div class="filter-row">
-          <label for="plexDupFilter">Rows</label>
-          <select id="plexDupFilter">
-            <option value="all">All</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="swapped">Swapped</option>
-            <option value="ignored">Ignored</option>
-            <option value="manual-review">Manual review</option>
-          </select>
-          <span id="plexDupVisible" class="subtle">-</span>
+          <button type="button" class="chip" data-filter="all">all</button>
+          <button type="button" class="chip" data-filter="pending">pending</button>
+          <button type="button" class="chip" data-filter="approved">approved</button>
+          <button type="button" class="chip" data-filter="swapped">swapped</button>
+          <button type="button" class="chip" data-filter="ignored">ignored</button>
+          <button type="button" class="chip" data-filter="manual-review">manual review</button>
+          <span class="subtle visible-line" id="plexDupVisible">-</span>
         </div>
-        <div id="plexApprovalState" class="subtle approval-line">Approve rows individually, then quarantine approved files and rescan Plex.</div>
-        <div id="plexCleanupPlan" class="cleanup-plan"></div>
-        <div id="plexDupList" class="duplicate-list"></div>
-      </article>
 
-      <article class="panel">
-        <div class="panel-head">
-          <h2>Activity</h2>
-          <span id="activityCount" class="subtle">0</span>
+        <div class="duplicate-list" id="plexDupList"></div>
+
+        <div class="staged-bar">
+          <span id="plexApprovalState">Nothing staged yet</span>
+          <span class="staged-detail" id="plexStagedDetail">Approve or swap a row to stage it</span>
+          <span class="spacer"></span>
+          <button type="button" id="previewPlexDuplicates">Preview plan</button>
+          <button type="button" class="primary" id="approvePlexDuplicates">Quarantine + rescan</button>
         </div>
-        <ol id="activityList" class="activity-list"></ol>
-      </article>
-    </section>
-  </main>
+      </section>
+
+      <section class="screen" id="screen-systems">
+        <div class="kicker">Systems</div>
+        <h1 id="systemsHeadline">Systems</h1>
+        <p class="lede">From the last LAN inventory sweep. Ports are listed only where a check is configured.</p>
+        <div class="stack" id="systemsList"></div>
+      </section>
+
+      <section class="screen" id="screen-ha">
+        <div class="kicker">Home Assistant</div>
+        <h1 id="haHeadline">Home Assistant</h1>
+        <p class="lede" id="haSub">-</p>
+
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Entities</div><div class="stat-value" id="haEntities">-</div></div>
+          <div class="stat"><div class="stat-label">Unavailable</div><div class="stat-value text-warn" id="haUnavailable">-</div></div>
+          <div class="stat"><div class="stat-label">Low battery</div><div class="stat-value text-warn" id="batteryState">-</div></div>
+          <div class="stat"><div class="stat-label">Service domains</div><div class="stat-value" id="haServices">-</div></div>
+        </div>
+
+        <div class="label-row">
+          <div class="section-label">Unavailable or unknown</div>
+          <span class="subtle" id="lastHaRun"></span>
+        </div>
+        <div class="line-list" id="haFindings"></div>
+      </section>
+
+      <section class="screen" id="screen-activity">
+        <div class="kicker">Activity</div>
+        <h1>What the agent has done.</h1>
+        <p class="lede">Every allowlisted action, newest first, with the output it returned. <span class="subtle" id="activityCount">0</span></p>
+
+        <ol class="activity-list" id="activityList"></ol>
+
+        <div class="section-label">Run something</div>
+        <div class="button-row" id="quickActions" style="max-width: 860px; margin-bottom: 14px;"></div>
+        <form class="command-form" id="commandForm">
+          <input id="commandText" type="text" placeholder="Note or ad-hoc command" autocomplete="off">
+          <button type="submit" class="primary" id="sendCommand">Send</button>
+          <button type="button" id="queueMessage">Queue</button>
+        </form>
+      </section>
+
+      <section class="screen" id="screen-connection">
+        <div class="kicker">Connection</div>
+        <h1 id="connHeadline">Connection</h1>
+        <p class="lede">Reached over Tailscale or the LAN, never a public port. The app tries each known address in turn and keeps the one that answers, so this is somewhere you visit rather than something you pass through.</p>
+
+        <div class="form-stack">
+          <label>
+            <span class="field-label">API URL</span>
+            <input id="apiUrl" type="url" inputmode="url" autocomplete="url">
+          </label>
+          <label>
+            <span class="field-label">Token</span>
+            <input id="apiToken" type="password" autocomplete="current-password">
+          </label>
+          <div class="button-row">
+            <button type="button" class="primary" id="saveSettings">Save and reconnect</button>
+            <button type="button" id="refreshStatus2">Refresh only</button>
+          </div>
+        </div>
+
+        <div class="section-label">Known addresses</div>
+        <div class="line-list" id="endpointList"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="dialog-backdrop" id="confirmBackdrop" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="dialog">
+      <h2 id="confirmTitle">Confirm</h2>
+      <p id="confirmBody"></p>
+      <div class="dialog-rows" id="confirmRows"></div>
+      <label class="dialog-confirm" id="confirmField">
+        <span class="field-label" id="confirmPromptLabel">Type to continue</span>
+        <input id="confirmWord" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="confirmCancel">Cancel</button>
+        <button type="button" class="primary" id="confirmGo">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
 
   <template id="systemRowTemplate">
-    <div class="system-row">
-      <div>
-        <strong class="system-name"></strong>
+    <article class="system-row">
+      <div class="system-head">
+        <span class="dot lg"></span>
+        <span class="system-name"></span>
         <span class="system-host"></span>
+        <span class="system-status"></span>
       </div>
-      <div class="system-status"></div>
       <div class="port-list"></div>
-    </div>
+    </article>
   </template>
 
-  <script src="/app.js?v=14" defer></script>
+  <script src="/app.js?v=15" defer></script>
 </body>
 </html>
