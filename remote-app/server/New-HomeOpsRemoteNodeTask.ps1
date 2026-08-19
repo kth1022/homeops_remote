@@ -20,9 +20,10 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
     throw "Remote config not found: $ConfigPath. Run New-HomeOpsRemoteToken.ps1 first."
 }
 
-$serverScript = Join-Path $PSScriptRoot 'homeops-remote.mjs'
-$arguments = "`"$serverScript`" --config `"$ConfigPath`""
-$action = New-ScheduledTaskAction -Execute $NodePath -Argument $arguments
+$launcherScript = Join-Path $PSScriptRoot 'Start-HomeOpsRemoteNode.ps1'
+$powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherScript`" -ConfigPath `"$ConfigPath`" -NodePath `"$NodePath`""
+$action = New-ScheduledTaskAction -Execute $powershellPath -Argument $arguments -WorkingDirectory $RemoteRoot
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Days 30) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
