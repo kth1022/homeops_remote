@@ -35,8 +35,9 @@ Review the `REMOVE CANDIDATE` paths before taking action. Cleanup is staged:
 2. Preview the quarantine plan.
 3. Run quarantine only with `confirm=QUARANTINE`.
 4. Rescan Plex and verify playback/metadata.
-   If playback fails, record an issue. Restore the quarantined duplicate only with `confirm=RESTORE`; this moves the failed kept file back into quarantine and requests another Plex rescan.
-5. Final deletion remains separately gated with `DELETE`.
+   Mark each playback item as verified when the kept file is good, or mark it as an issue when the original should be restored.
+5. Final cleanup remains separately gated with `DELETE`.
+   It restores issue-marked originals, moves failed kept files back into quarantine, deletes verified quarantined duplicates, and requests another Plex rescan.
 
 Cleanup plans list the source folders that removed files came from. During quarantine, those source folders are removed only when they are safely under the Plex media tree and no movie files remain in that folder tree.
 
@@ -47,8 +48,9 @@ node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates dec
 node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates decision <rowId> swapped keep_candidate
 node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates decision <rowId> ignored not_same_movie
 node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates quarantine
+node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates verify-item <verificationKey> verified
 node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates issue-item <verificationKey> distorted image
-node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates restore-item <verificationKey> RESTORE distorted image
+node .\third-party\socketagent\server\tools\homeops-tools.js plex-duplicates final-delete <planId> DELETE
 ```
 
 ## Ranking

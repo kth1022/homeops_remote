@@ -36,7 +36,7 @@ Usage:
   node homeops-tools.js plex-duplicates decision <rowId> <approved|swapped|ignored|clear> [reason]
   node homeops-tools.js plex-duplicates verify-item <verificationKey> [verified|clear]
   node homeops-tools.js plex-duplicates issue-item <verificationKey> [issue note]
-  node homeops-tools.js plex-duplicates restore-item <verificationKey> RESTORE [issue note]
+  node homeops-tools.js plex-duplicates restore-item <verificationKey> RESTORE [issue note]  # immediate restore escape hatch
   node homeops-tools.js plex-duplicates verify-complete [planId]
   node homeops-tools.js plex-duplicates final-delete <planId> DELETE
   node homeops-tools.js message <text>
@@ -398,7 +398,7 @@ async function runMcp() {
 
   server.registerTool("SetPlexDuplicatePlaybackVerificationItem", {
     title: "Set Plex Duplicate Playback Verification Item",
-    description: "Mark one quarantined duplicate cleanup item as playback verified or clear that verification.",
+    description: "Mark one quarantined duplicate cleanup item as playback verified, approving the quarantined duplicate for removal during final cleanup, or clear that verification.",
     inputSchema: {
       key: z.string().describe("Verification key from the cleanup plan."),
       verified: z.boolean().optional().describe("True to mark verified, false to clear verification. Default true."),
@@ -407,7 +407,7 @@ async function runMcp() {
 
   server.registerTool("SetPlexDuplicatePlaybackIssue", {
     title: "Set Plex Duplicate Playback Issue",
-    description: "Record a playback issue for one cleanup item without moving files.",
+    description: "Record a playback issue for one cleanup item without moving files. Issue-marked items are restored during final cleanup.",
     inputSchema: {
       key: z.string().describe("Verification key from the cleanup plan."),
       note: z.string().optional().describe("Playback issue note, for example distorted image or file will not play."),
@@ -415,8 +415,8 @@ async function runMcp() {
   }, async args => asText(() => setPlexDuplicateVerificationIssue(args.key, args.note || "")));
 
   server.registerTool("RestorePlexDuplicatePlaybackItem", {
-    title: "Restore Plex Duplicate Playback Item",
-    description: "Restore one quarantined duplicate and move the failed current file to quarantine. Requires confirm=RESTORE.",
+    title: "Immediately Restore Plex Duplicate Playback Item",
+    description: "Emergency/manual path: restore one quarantined duplicate immediately and move the failed current file to quarantine. The normal workflow is to mark Issue and let final cleanup restore it. Requires confirm=RESTORE.",
     inputSchema: {
       key: z.string().describe("Verification key from the cleanup plan."),
       confirm: z.literal("RESTORE").describe("Must be exactly RESTORE."),
@@ -426,13 +426,13 @@ async function runMcp() {
 
   server.registerTool("CompletePlexDuplicatePlaybackVerification", {
     title: "Complete Plex Duplicate Playback Verification",
-    description: "Mark playback verification complete after every cleanup item is individually verified.",
+    description: "Mark playback verification complete after every cleanup item is individually verified or marked as an issue.",
     inputSchema: { planId: z.string().optional().describe("Optional cleanup plan id. Defaults to latest plan.") },
   }, async args => asText(() => completePlexDuplicateVerification(args.planId || "")));
 
   server.registerTool("ApprovePlexDuplicateFinalDelete", {
-    title: "Approve Plex Duplicate Final Delete",
-    description: "Delete quarantined Plex duplicate files only after quarantine, rescan, and playback verification are complete. Requires confirm=DELETE.",
+    title: "Approve Plex Duplicate Final Cleanup",
+    description: "Restore issue-marked movies and delete approved quarantined duplicate files after quarantine, rescan, and playback checks are complete. Requires confirm=DELETE.",
     inputSchema: {
       planId: z.string().describe("Cleanup plan id."),
       confirm: z.literal("DELETE").describe("Must be exactly DELETE."),
