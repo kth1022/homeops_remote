@@ -610,28 +610,30 @@ h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .verify-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
   margin-left: auto;
 }
 
 .verify-choice {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  padding: 0 10px;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10.5px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .verify-choice:hover { background: var(--surface-2); color: var(--ink); }
 
 .verify-choice input {
-  width: 13px;
-  min-height: 13px;
+  width: 11px;
+  min-height: 11px;
   flex: 0 0 auto;
   margin: 0;
   accent-color: var(--accent);
@@ -916,10 +918,10 @@ h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
   h1 { font-size: 24px; }
 
   .duplicate-files { grid-template-columns: 1fr; }
-  .duplicate-actions button, .verify-item button, .chip { min-height: 44px; }
+  .duplicate-actions button, .chip { min-height: 44px; }
   .duplicate-reason { width: 100%; text-align: left; margin-left: 0; }
-  .verify-actions { width: 100%; margin-left: 0; }
-  .verify-actions .verify-choice { flex: 1; min-height: 44px; justify-content: center; }
+  .verify-actions { width: auto; margin-left: auto; }
+  .verify-actions .verify-choice { flex: 0 0 auto; min-height: 32px; padding: 0 8px; justify-content: center; }
 
   .staged-bar { flex-wrap: wrap; bottom: 74px; }
   .staged-bar .spacer { margin-left: 0; width: 100%; }

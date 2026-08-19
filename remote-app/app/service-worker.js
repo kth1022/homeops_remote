@@ -1,8 +1,8 @@
-const CACHE_NAME = 'homeops-remote-v17';
+const CACHE_NAME = 'homeops-remote-v18';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/styles.css',
+  '/styles.css?v=18',
   '/app.js?v=17',
   '/manifest.webmanifest',
   '/icons/icon.svg',
