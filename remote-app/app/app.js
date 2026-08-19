@@ -621,6 +621,14 @@ function renderPlexDuplicates(report) {
   }
 }
 
+function setLatestPlexReport(report) {
+  if (state.lastStatus && report) state.lastStatus.plexDuplicates = report;
+}
+
+function renderLatestPlexReport() {
+  if (state.lastStatus?.plexDuplicates) renderPlexDuplicates(state.lastStatus.plexDuplicates);
+}
+
 function renderPlexCleanupPlan(plan) {
   els.plexCleanupPlan.replaceChildren();
   if (!plan?.planId) return;
@@ -963,10 +971,7 @@ async function setPlexDuplicateDecision(rowId, action, reason = '') {
       body: JSON.stringify({ rowId, action, reason })
     });
     state.plexCleanupPreview = null;
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -977,6 +982,7 @@ async function setPlexDuplicateDecision(rowId, action, reason = '') {
     toast(error.message);
   } finally {
     setRowBusy(rowId, false);
+    renderLatestPlexReport();
   }
 }
 
@@ -990,10 +996,7 @@ async function previewPlexCleanupPlan() {
       body: JSON.stringify({ reportPath: report.path })
     });
     state.plexCleanupPreview = payload.plan || null;
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     setConnection('Online', 'good');
     toast(`Previewed ${payload.plan?.moveCount || 0} quarantine move${payload.plan?.moveCount === 1 ? '' : 's'}.`);
   } catch (error) {
@@ -1002,6 +1005,7 @@ async function previewPlexCleanupPlan() {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1030,10 +1034,7 @@ async function finalizePlexCleanupPlan() {
       body: JSON.stringify({ reportPath: report.path, confirm: 'QUARANTINE' })
     });
     state.plexCleanupPreview = null;
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -1046,6 +1047,7 @@ async function finalizePlexCleanupPlan() {
     await refreshCleanupProgress();
     stopCleanupProgressPolling();
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1057,10 +1059,7 @@ async function markPlaybackVerified(plan) {
       method: 'POST',
       body: JSON.stringify({ planId: plan.planId })
     });
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -1071,6 +1070,7 @@ async function markPlaybackVerified(plan) {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1082,10 +1082,7 @@ async function setPlexPlaybackVerificationItem(plan, item, verified) {
       method: 'POST',
       body: JSON.stringify({ planId: plan.planId, key: item.key, verified })
     });
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const summary = payload.report?.cleanupPlan?.verificationSummary;
     els.commandState.textContent = summary
       ? `Playback checks: ${summary.resolved ?? summary.verified} of ${summary.total} resolved`
@@ -1097,6 +1094,7 @@ async function setPlexPlaybackVerificationItem(plan, item, verified) {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1110,10 +1108,7 @@ async function markPlexPlaybackIssue(plan, item) {
       method: 'POST',
       body: JSON.stringify({ planId: plan.planId, key: item.key, issue: true, note: note || 'Playback issue' })
     });
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -1124,6 +1119,7 @@ async function markPlexPlaybackIssue(plan, item) {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1149,10 +1145,7 @@ async function restorePlexPlaybackDuplicate(plan, item) {
         note: 'Playback failed; restored duplicate'
       })
     });
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -1163,6 +1156,7 @@ async function restorePlexPlaybackDuplicate(plan, item) {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
@@ -1183,10 +1177,7 @@ async function recordFinalDeleteApproval(plan) {
       method: 'POST',
       body: JSON.stringify({ planId: plan.planId, confirm: 'DELETE', verificationComplete: true })
     });
-    if (state.lastStatus) {
-      state.lastStatus.plexDuplicates = payload.report;
-      renderPlexDuplicates(payload.report);
-    }
+    setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
@@ -1197,6 +1188,7 @@ async function recordFinalDeleteApproval(plan) {
     toast(error.message);
   } finally {
     setBusy(false);
+    renderLatestPlexReport();
   }
 }
 
