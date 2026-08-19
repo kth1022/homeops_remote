@@ -1286,6 +1286,7 @@ function buildPlexRestoreCommand({ restoreSource, restoreTarget, failedKeepMoves
   return `python3 - <<'PY'
 import base64
 import errno
+import filecmp
 import json
 import os
 import urllib.parse
@@ -1334,8 +1335,20 @@ restore_source = validate_quarantine(restore_source)
 restore_target = validate_media(restore_target)
 if not os.path.exists(restore_source):
     raise SystemExit("restore source missing: " + restore_source)
-if os.path.exists(restore_target):
-    raise SystemExit("restore target already exists: " + restore_target)
+
+restore_target_already_present = os.path.exists(restore_target)
+if restore_target_already_present:
+    matched_failed_keep = False
+    for move in failed_keep_moves:
+        source = validate_media(move["source"])
+        if os.path.exists(source) and os.path.isfile(source) and os.path.getsize(source) == os.path.getsize(restore_source):
+            if filecmp.cmp(source, restore_source, shallow=False):
+                matched_failed_keep = True
+                break
+    if not matched_failed_keep:
+        raise SystemExit("restore target already exists and quarantine source does not match the failed kept file; refusing to overwrite: " + restore_target)
+    print("restore_target_already_present=" + restore_target)
+    print("restore_source_matches_failed_keep=" + restore_source)
 
 for move in failed_keep_moves:
     source = validate_media(move["source"])
@@ -1344,12 +1357,18 @@ for move in failed_keep_moves:
         print("failed_keep_already_missing=" + source)
         continue
     if os.path.exists(quarantine):
+        if restore_target_already_present and filecmp.cmp(source, quarantine, shallow=False):
+            print("failed_keep_quarantine_already_present=" + quarantine)
+            continue
         raise SystemExit("failed keep quarantine target already exists: " + quarantine)
     move_file(source, quarantine)
     print("failed_keep_quarantined=" + source + " -> " + quarantine)
 
-move_file(restore_source, restore_target)
-print("restored=" + restore_source + " -> " + restore_target)
+if restore_target_already_present:
+    print("restore_source_left_for_final_delete=" + restore_source)
+else:
+    move_file(restore_source, restore_target)
+    print("restored=" + restore_source + " -> " + restore_target)
 
 pref = "/mnt/Plex/AppData/PlexServer/PlexConfig/Library/Application Support/Plex Media Server/Preferences.xml"
 token = ET.parse(pref).getroot().attrib.get("PlexOnlineToken") or ""
@@ -1468,6 +1487,7 @@ function finalDeletePathsForPlan(plan) {
     const restoreAction = move.restoreAction || {};
     if (restoreAction.restored) {
       paths.push(...asArray(restoreAction.failedKeepQuarantineFiles));
+      paths.push(...asArray(restoreAction.redundantQuarantineFiles));
     } else {
       paths.push(move.quarantine);
     }
@@ -1709,16 +1729,23 @@ async function applyPlexRestoreForMove(plan, move, remoteAddress, note, restored
     restoreTarget: assertPlexMediaPath(move.source, "restore target"),
     failedKeepMoves
   }), `homeops plex duplicate restore ${plan.planId}`, 21600);
+  const restoreOutput = stringValue(move.restoreResult?.output);
+  const targetAlreadyPresent = restoreOutput.includes("restore_target_already_present=");
+  const redundantQuarantineFiles = targetAlreadyPresent ? [move.quarantine] : [];
   move.restoreAction = {
     restored: true,
     restoredAt,
     restoredBy: remoteAddress,
     issueNote,
+    targetAlreadyPresent,
     restoredFrom: move.quarantine,
     restoredTo: move.source,
     failedKeepFiles: asArray(move.keepFiles),
     failedKeepQuarantineFiles,
-    approvalMeaning: "Restored the quarantined duplicate for this item and moved the failed kept file(s) into quarantine."
+    redundantQuarantineFiles,
+    approvalMeaning: targetAlreadyPresent
+      ? "The restore target was already present, so the failed kept file(s) were moved into quarantine and redundant quarantined copies were approved for final deletion."
+      : "Restored the quarantined duplicate for this item and moved the failed kept file(s) into quarantine."
   };
 
   plan.verificationChecks = getVerificationChecks(plan);
@@ -1732,6 +1759,7 @@ async function applyPlexRestoreForMove(plan, move, remoteAddress, note, restored
     restoredAt,
     restoredBy: remoteAddress,
     failedKeepQuarantineFiles,
+    redundantQuarantineFiles,
     verified: true,
     verifiedAt: restoredAt,
     verifiedBy: remoteAddress
@@ -1740,9 +1768,11 @@ async function applyPlexRestoreForMove(plan, move, remoteAddress, note, restored
   return {
     title: move.title,
     key,
+    targetAlreadyPresent,
     restoredFrom: move.quarantine,
     restoredTo: move.source,
-    failedKeepQuarantineFiles
+    failedKeepQuarantineFiles,
+    redundantQuarantineFiles
   };
 }
 
