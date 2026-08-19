@@ -688,7 +688,7 @@ function getActionManifest() {
     { id: "plex.duplicates.scan", label: "Plex Duplicates", description: "Scan Plex movie libraries and refresh the duplicate movie report.", mutating: false },
     { id: "plex.duplicates.finalize-cleanup", label: "Plex Quarantine", description: "Move approved duplicate candidates to quarantine only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "plex.duplicates.restore-item", label: "Plex Restore", description: "Restore a quarantined duplicate only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
-    { id: "plex.duplicates.final-delete-approval", label: "Plex Final Delete", description: "Delete quarantined files only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
+    { id: "plex.duplicates.final-delete-approval", label: "Plex Final Cleanup", description: "Restore issue-marked movies and delete approved quarantine files only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "homeassistant.service.dryrun", label: "HA Service Dry Run", description: "Prepare a Home Assistant service call without applying it.", mutating: false },
     { id: "homeassistant.service.apply", label: "HA Service Apply", description: "Apply a Home Assistant service call only when local config permits it.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "message", label: "Message", description: "Record a remote instruction for review.", mutating: false }
@@ -1664,7 +1664,7 @@ function verificationSummaryForPlan(plan) {
   const verifiedCount = items.filter((item) => item.status === "verified").length;
   const issueCount = items.filter((item) => item.status === "issue").length;
   const restoredCount = items.filter((item) => item.status === "restored").length;
-  const resolvedCount = verifiedCount + restoredCount;
+  const resolvedCount = verifiedCount + issueCount + restoredCount;
   return {
     total: items.length,
     verified: verifiedCount,
@@ -1673,6 +1673,76 @@ function verificationSummaryForPlan(plan) {
     resolved: resolvedCount,
     remaining: Math.max(0, items.length - resolvedCount),
     complete: items.length > 0 && resolvedCount === items.length
+  };
+}
+
+function pendingRestoreMovesForPlan(plan) {
+  const checks = getVerificationChecks(plan);
+  return asArray(plan?.moves).filter((move) => {
+    const key = move.verificationKey || verificationKeyForMove(move);
+    const check = checks[key] || {};
+    return Boolean(check.issue) && !check.restored && !move.restoreAction?.restored;
+  });
+}
+
+async function applyPlexRestoreForMove(plan, move, remoteAddress, note, restoredAt = new Date().toISOString()) {
+  const key = move.verificationKey || verificationKeyForMove(move);
+  if (move.restoreAction?.restored) {
+    return {
+      title: move.title,
+      key,
+      skipped: true,
+      reason: "already restored",
+      failedKeepQuarantineFiles: asArray(move.restoreAction.failedKeepQuarantineFiles)
+    };
+  }
+
+  const failedKeepMoves = asArray(move.keepFiles).map((file) => ({
+    source: assertPlexMediaPath(file, "failed keep source"),
+    quarantine: assertQuarantinePath(playbackFailedPathFor(file, plan.planId), "failed keep quarantine")
+  }));
+  const failedKeepQuarantineFiles = failedKeepMoves.map((failedMove) => failedMove.quarantine);
+  const issueNote = stringValue(note || "Playback failed; restored quarantined duplicate.").slice(0, 1000);
+
+  move.restoreResult = await runTrueNasCommand(buildPlexRestoreCommand({
+    restoreSource: assertQuarantinePath(move.quarantine, "restore source"),
+    restoreTarget: assertPlexMediaPath(move.source, "restore target"),
+    failedKeepMoves
+  }), `homeops plex duplicate restore ${plan.planId}`, 21600);
+  move.restoreAction = {
+    restored: true,
+    restoredAt,
+    restoredBy: remoteAddress,
+    issueNote,
+    restoredFrom: move.quarantine,
+    restoredTo: move.source,
+    failedKeepFiles: asArray(move.keepFiles),
+    failedKeepQuarantineFiles,
+    approvalMeaning: "Restored the quarantined duplicate for this item and moved the failed kept file(s) into quarantine."
+  };
+
+  plan.verificationChecks = getVerificationChecks(plan);
+  plan.verificationChecks[key] = {
+    ...(plan.verificationChecks[key] || {}),
+    issue: true,
+    issueNote,
+    issueAt: plan.verificationChecks[key]?.issueAt || restoredAt,
+    issueBy: plan.verificationChecks[key]?.issueBy || remoteAddress,
+    restored: true,
+    restoredAt,
+    restoredBy: remoteAddress,
+    failedKeepQuarantineFiles,
+    verified: true,
+    verifiedAt: restoredAt,
+    verifiedBy: remoteAddress
+  };
+
+  return {
+    title: move.title,
+    key,
+    restoredFrom: move.quarantine,
+    restoredTo: move.source,
+    failedKeepQuarantineFiles
   };
 }
 
@@ -2012,8 +2082,9 @@ async function setPlexCleanupVerificationItem(body, remoteAddress) {
   }
   const summary = verificationSummaryForPlan(plan);
   updatePlanStage(plan, "verification", {
-    status: summary.complete ? "pending" : "pending",
-    checkedItems: summary.verified,
+    status: "pending",
+    checkedItems: summary.resolved,
+    issueItems: summary.issues,
     totalItems: summary.total
   });
   const saved = await savePlexCleanupPlan(plan);
@@ -2119,46 +2190,15 @@ async function restorePlexCleanupVerificationItem(body, remoteAddress) {
   const key = stringValue(body.key || body.verificationKey);
   const move = asArray(plan.moves).find((candidate) => (candidate.verificationKey || verificationKeyForMove(candidate)) === key);
   if (!move) throw new Error("Verification item was not found in this cleanup plan.");
-  if (move.restoreAction?.restored) throw new Error("This playback item has already been restored.");
 
   const restoredAt = new Date().toISOString();
-  const failedKeepMoves = asArray(move.keepFiles).map((file) => ({
-    source: assertPlexMediaPath(file, "failed keep source"),
-    quarantine: assertQuarantinePath(playbackFailedPathFor(file, plan.planId), "failed keep quarantine")
-  }));
-  const failedKeepQuarantineFiles = failedKeepMoves.map((failedMove) => failedMove.quarantine);
-
-  move.restoreResult = await runTrueNasCommand(buildPlexRestoreCommand({
-    restoreSource: assertQuarantinePath(move.quarantine, "restore source"),
-    restoreTarget: assertPlexMediaPath(move.source, "restore target"),
-    failedKeepMoves
-  }), `homeops plex duplicate restore ${plan.planId}`, 21600);
-  move.restoreAction = {
-    restored: true,
-    restoredAt,
-    restoredBy: remoteAddress,
-    issueNote: stringValue(body.note || body.issueNote || "Playback failed; restored quarantined duplicate.").slice(0, 1000),
-    restoredFrom: move.quarantine,
-    restoredTo: move.source,
-    failedKeepFiles: asArray(move.keepFiles),
-    failedKeepQuarantineFiles,
-    approvalMeaning: "Restored the quarantined duplicate for this item and moved the failed kept file(s) into quarantine."
-  };
-
-  plan.verificationChecks = getVerificationChecks(plan);
-  plan.verificationChecks[key] = {
-    issue: true,
-    issueNote: move.restoreAction.issueNote,
-    issueAt: restoredAt,
-    issueBy: remoteAddress,
-    restored: true,
-    restoredAt,
-    restoredBy: remoteAddress,
-    failedKeepQuarantineFiles,
-    verified: true,
-    verifiedAt: restoredAt,
-    verifiedBy: remoteAddress
-  };
+  const restore = await applyPlexRestoreForMove(
+    plan,
+    move,
+    remoteAddress,
+    body.note || body.issueNote || "Playback failed; restored quarantined duplicate.",
+    restoredAt
+  );
 
   const summary = verificationSummaryForPlan(plan);
   updatePlanStage(plan, "verification", {
@@ -2179,9 +2219,9 @@ async function restorePlexCleanupVerificationItem(body, remoteAddress) {
       message: "Quarantined duplicate restored and failed kept file moved to quarantine.",
       planId: plan.planId,
       title: move.title,
-      restoredFrom: move.quarantine,
-      restoredTo: move.source,
-      failedKeepQuarantineFiles,
+      restoredFrom: restore.restoredFrom,
+      restoredTo: restore.restoredTo,
+      failedKeepQuarantineFiles: restore.failedKeepQuarantineFiles,
       resolvedItems: summary.resolved,
       totalItems: summary.total,
       jsonPath: saved.jsonPath,
@@ -2209,16 +2249,44 @@ async function recordPlexFinalDeleteApproval(body, remoteAddress) {
   }
   const quarantine = asArray(plan.stages).find((stage) => stage.id === "quarantine");
   const plexRescan = asArray(plan.stages).find((stage) => stage.id === "plex_rescan");
-  const verification = asArray(plan.stages).find((stage) => stage.id === "verification");
   if (quarantine?.status !== "complete") throw new Error("Final delete is blocked until quarantine is complete.");
   if (plexRescan?.status !== "complete") throw new Error("Final delete is blocked until Plex rescan is complete.");
-  if (verification?.status !== "complete") throw new Error("Final delete is blocked until playback verification is marked complete.");
+  const verificationBefore = verificationSummaryForPlan(plan);
+  if (!verificationBefore.complete) {
+    throw new Error(`Final action is blocked until every movie is verified or marked as an issue (${verificationBefore.resolved}/${verificationBefore.total} resolved).`);
+  }
 
   const approvedAt = new Date().toISOString();
   updatePlanStage(plan, "final_delete_approval", { status: "running", approvedAt });
+  const pendingRestores = pendingRestoreMovesForPlan(plan);
+  const restoreResults = [];
+  for (const move of pendingRestores) {
+    restoreResults.push(await applyPlexRestoreForMove(
+      plan,
+      move,
+      remoteAddress,
+      getVerificationChecks(plan)[move.verificationKey || verificationKeyForMove(move)]?.issueNote || "Playback failed; restored quarantined duplicate.",
+      new Date().toISOString()
+    ));
+    await savePlexCleanupPlan(plan);
+  }
+  const verificationAfterRestores = verificationSummaryForPlan(plan);
+  updatePlanStage(plan, "verification", {
+    status: "complete",
+    completedAt: approvedAt,
+    checkedItems: verificationAfterRestores.resolved,
+    restoredItems: verificationAfterRestores.restored,
+    issueItems: verificationAfterRestores.issues,
+    totalItems: verificationAfterRestores.total
+  });
   const deletePaths = finalDeletePathsForPlan(plan);
   plan.deleteResult = await runTrueNasCommand(buildPlexDeleteCommand(deletePaths), `homeops plex duplicate final delete ${plan.planId}`, 900);
   plan.finalDeleteSummary = parsePlexFinalDeleteSummary(plan.deleteResult.output, plan);
+  plan.finalRestoreSummary = {
+    restoredCount: restoreResults.filter((result) => !result.skipped).length,
+    skippedCount: restoreResults.filter((result) => result.skipped).length,
+    restoredItems: restoreResults
+  };
   try {
     plan.postDeletePlexRescanResult = await runTrueNasCommand(buildPlexLibraryRescanCommand(), `homeops plex duplicate post-delete rescan ${plan.planId}`, 900);
     plan.postDeleteDuplicateScanResult = await runNodeScript("Find-PlexDuplicateMovies.js", [], 180_000);
@@ -2232,7 +2300,7 @@ async function recordPlexFinalDeleteApproval(body, remoteAddress) {
     confirm: "DELETE",
     verificationComplete: true,
     note: stringValue(body.note).slice(0, 1000),
-    approvalMeaning: "Authorized deletion of quarantined files in this cleanup plan only."
+    approvalMeaning: "Authorized restoring issue-marked movies, deleting verified quarantined duplicates, and deleting failed current files that were moved to quarantine during restore."
   };
   plan.stages = asArray(plan.stages).map((stage) => {
     if (stage.id === "verification") return { ...stage, status: "complete", completedAt: approvedAt };
@@ -2248,9 +2316,10 @@ async function recordPlexFinalDeleteApproval(body, remoteAddress) {
     action: "plex.duplicates.final-delete-approval",
     status: "completed",
     result: {
-      message: "Final delete approval recorded and quarantined files deleted.",
+      message: "Final cleanup approval recorded, issue restores applied, and approved quarantine files deleted.",
       planId: plan.planId,
       moveCount: plan.moveCount,
+      restoredCount: plan.finalRestoreSummary.restoredCount,
       deletedFileCount: plan.finalDeleteSummary.deletedFileCount,
       deletedFolderCount: plan.finalDeleteSummary.deletedFolderCount,
       postDeletePlexRescan: plan.postDeletePlexRescanResult ? "completed" : "failed",

@@ -193,19 +193,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && els.confirmBackdrop.classList.contains('open')) closeConfirm(false);
 });
 
-/* A short free-text prompt, styled like the rest of the app. */
-async function askNote(title, body) {
-  const ok = await openConfirm({
-    title,
-    body,
-    freeText: true,
-    promptLabel: 'What happened',
-    placeholder: 'e.g. stutters after 20 minutes',
-    goLabel: 'Record'
-  });
-  return ok ? (els.confirmWord.value || '').trim() : null;
-}
-
 /* ---------------- api ---------------- */
 
 async function apiFetch(path, options = {}) {
@@ -669,7 +656,7 @@ function renderPlexCleanupPlan(plan) {
   const verifiedCount = Number(verificationSummary.verified ?? verificationItems.filter((item) => item.verified).length);
   const issueCount = Number(verificationSummary.issues ?? verificationItems.filter((item) => item.status === 'issue').length);
   const restoredCount = Number(verificationSummary.restored ?? verificationItems.filter((item) => item.status === 'restored').length);
-  const resolvedCount = Number(verificationSummary.resolved ?? (verifiedCount + restoredCount));
+  const resolvedCount = Number(verificationSummary.resolved ?? (verifiedCount + issueCount + restoredCount));
   const totalVerifyCount = Number(verificationSummary.total ?? verificationItems.length);
   const allItemsResolved = totalVerifyCount > 0 && resolvedCount === totalVerifyCount;
 
@@ -730,27 +717,31 @@ function renderPlexCleanupPlan(plan) {
     for (const item of verificationItems) {
       const status = item.status || (item.verified ? 'verified' : 'pending');
       const row = el('div', `verify-item ${status}`);
-      const done = status === 'verified' || status === 'restored';
+      const statusText = status === 'issue' ? 'restore needed' : status;
+      const choices = el('div', 'verify-actions');
 
-      const check = el('button', `check ${done ? 'on' : ''}`, '');
-      check.type = 'button';
-      check.setAttribute('aria-label', `Mark ${item.title || 'item'} verified`);
-      check.disabled = state.busy || !canVerifyItems || status === 'restored';
-      check.addEventListener('click', () => setPlexPlaybackVerificationItem(plan, item, status !== 'verified'));
+      const verifiedChoice = el('label', `verify-choice ${status === 'verified' ? 'selected' : ''}`);
+      const verifiedInput = el('input');
+      verifiedInput.type = 'checkbox';
+      verifiedInput.checked = status === 'verified';
+      verifiedInput.disabled = state.busy || !canVerifyItems || status === 'restored';
+      verifiedInput.addEventListener('change', () => setPlexPlaybackVerificationItem(plan, item, verifiedInput.checked));
+      verifiedChoice.title = 'Approve this duplicate for removal during final cleanup.';
+      verifiedChoice.append(verifiedInput, el('span', null, 'Verified'));
 
-      const issueButton = el('button', null, 'Issue');
-      issueButton.type = 'button';
-      issueButton.disabled = state.busy || !canVerifyItems || status === 'restored';
-      issueButton.addEventListener('click', () => markPlexPlaybackIssue(plan, item));
+      const issueChoice = el('label', `verify-choice issue-choice ${status === 'issue' ? 'selected' : ''}`);
+      const issueInput = el('input');
+      issueInput.type = 'checkbox';
+      issueInput.checked = status === 'issue';
+      issueInput.disabled = state.busy || !canVerifyItems || status === 'restored';
+      issueInput.addEventListener('change', () => markPlexPlaybackIssue(plan, item, issueInput.checked));
+      issueChoice.title = 'Mark this movie for original restore during final cleanup.';
+      issueChoice.append(issueInput, el('span', null, 'Issue'));
 
-      const restoreButton = el('button', 'danger', 'Restore');
-      restoreButton.type = 'button';
-      restoreButton.disabled = state.busy || !canVerifyItems || status === 'restored';
-      restoreButton.addEventListener('click', () => restorePlexPlaybackDuplicate(plan, item));
+      choices.append(verifiedChoice, issueChoice);
 
-      row.append(check, el('span', 'verify-title', item.title || 'Untitled'), el('span', 'verify-state', status));
-      if (item.issueNote) row.append(el('span', 'verify-state text-warn', item.issueNote));
-      row.append(issueButton, restoreButton);
+      row.append(el('span', 'verify-title', item.title || 'Untitled'), el('span', 'verify-state', statusText), choices);
+      if (item.issueNote) row.append(el('span', 'verify-note text-warn', item.issueNote));
       list.appendChild(row);
     }
     els.plexCleanupPlan.appendChild(list);
@@ -762,18 +753,18 @@ function renderPlexCleanupPlan(plan) {
 
   if (!verificationComplete) {
     gate.append(el('span', null, allItemsResolved
-      ? 'Every movie played back. Mark the check complete to unlock deletion.'
-      : 'Resolve every playback check before deletion unlocks.'));
-    const verifyDone = el('button', 'primary', allItemsResolved ? 'Playback resolved' : `Resolve all movies (${resolvedCount}/${totalVerifyCount})`);
-    verifyDone.type = 'button';
-    verifyDone.disabled = state.busy || !canVerifyItems || !allItemsResolved;
-    verifyDone.addEventListener('click', () => markPlaybackVerified(plan));
-    gate.append(verifyDone);
+      ? 'Every movie is resolved. Final cleanup will restore issue-marked movies and delete approved duplicates.'
+      : 'Choose Verified or Issue for every movie before final cleanup unlocks.'));
+    const finalButton = el('button', 'danger', allItemsResolved ? 'Apply deletes/restores' : `Resolve all movies (${resolvedCount}/${totalVerifyCount})`);
+    finalButton.type = 'button';
+    finalButton.disabled = state.busy || !canVerifyItems || !allItemsResolved || Boolean(plan.finalDeleteApproval);
+    finalButton.addEventListener('click', () => recordFinalDeleteApproval(plan));
+    gate.append(finalButton);
   } else {
     gate.append(el('span', null, plan.finalDeleteApproval
-      ? 'Deletion already approved for this plan.'
-      : 'Playback verified. Deletion is unlocked and gated by a typed confirmation.'));
-    const finalButton = el('button', 'danger', plan.finalDeleteApproval ? 'Delete approved' : 'Final delete');
+      ? 'Final cleanup already approved for this plan.'
+      : 'Final cleanup is unlocked and gated by a typed confirmation.'));
+    const finalButton = el('button', 'danger', plan.finalDeleteApproval ? 'Cleanup approved' : 'Apply deletes/restores');
     finalButton.type = 'button';
     finalButton.disabled = state.busy || Boolean(plan.finalDeleteApproval) || !priorComplete;
     finalButton.addEventListener('click', () => recordFinalDeleteApproval(plan));
@@ -1051,29 +1042,6 @@ async function finalizePlexCleanupPlan() {
   }
 }
 
-async function markPlaybackVerified(plan) {
-  if (state.busy || !plan?.planId) return;
-  setBusy(true, 'Verifying');
-  try {
-    const payload = await apiFetch('/api/plex/duplicates/verification-complete', {
-      method: 'POST',
-      body: JSON.stringify({ planId: plan.planId })
-    });
-    setLatestPlexReport(payload.report);
-    const history = await apiFetch('/api/commands');
-    renderActivity(history.commands);
-    setConnection('Online', 'good');
-    toast('Playback verification marked complete.');
-  } catch (error) {
-    setConnection('Error', 'bad');
-    els.commandState.textContent = error.message;
-    toast(error.message);
-  } finally {
-    setBusy(false);
-    renderLatestPlexReport();
-  }
-}
-
 async function setPlexPlaybackVerificationItem(plan, item, verified) {
   if (state.busy || !plan?.planId || !item?.key) return;
   setBusy(true, verified ? 'Marking verified' : 'Clearing');
@@ -1098,58 +1066,24 @@ async function setPlexPlaybackVerificationItem(plan, item, verified) {
   }
 }
 
-async function markPlexPlaybackIssue(plan, item) {
+async function markPlexPlaybackIssue(plan, item, issue) {
   if (state.busy || !plan?.planId || !item?.key) return;
-  const note = await askNote('Record a playback issue', `Describe what went wrong with ${item.title || 'this movie'}. The kept file stays in place; nothing is deleted.`);
-  if (note === null) return;
-  setBusy(true, 'Recording issue');
+  setBusy(true, issue ? 'Marking issue' : 'Clearing issue');
   try {
     const payload = await apiFetch('/api/plex/duplicates/verification-issue', {
-      method: 'POST',
-      body: JSON.stringify({ planId: plan.planId, key: item.key, issue: true, note: note || 'Playback issue' })
-    });
-    setLatestPlexReport(payload.report);
-    const history = await apiFetch('/api/commands');
-    renderActivity(history.commands);
-    setConnection('Online', 'good');
-    toast('Playback issue recorded.');
-  } catch (error) {
-    setConnection('Error', 'bad');
-    els.commandState.textContent = error.message;
-    toast(error.message);
-  } finally {
-    setBusy(false);
-    renderLatestPlexReport();
-  }
-}
-
-async function restorePlexPlaybackDuplicate(plan, item) {
-  if (state.busy || !plan?.planId || !item?.key) return;
-  const ok = await openConfirm({
-    title: `Restore the duplicate of ${item.title || 'this movie'}`,
-    body: 'The quarantined duplicate comes back, and the file that failed playback moves to quarantine in its place. Plex rescans afterwards.',
-    word: 'RESTORE',
-    goLabel: 'Restore duplicate',
-    danger: true
-  });
-  if (!ok) return;
-
-  setBusy(true, 'Restoring duplicate');
-  try {
-    const payload = await apiFetch('/api/plex/duplicates/restore-item', {
       method: 'POST',
       body: JSON.stringify({
         planId: plan.planId,
         key: item.key,
-        confirm: 'RESTORE',
-        note: 'Playback failed; restored duplicate'
+        issue,
+        note: 'Restore original during final cleanup.'
       })
     });
     setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
-    toast('Duplicate restored.');
+    toast(issue ? 'Movie marked for restore.' : 'Restore mark cleared.');
   } catch (error) {
     setConnection('Error', 'bad');
     els.commandState.textContent = error.message;
@@ -1162,16 +1096,18 @@ async function restorePlexPlaybackDuplicate(plan, item) {
 
 async function recordFinalDeleteApproval(plan) {
   if (state.busy || !plan?.planId || plan.finalDeleteApproval) return;
+  const summary = plan.verificationSummary || {};
+  const issueCount = Number(summary.issues || 0);
   const ok = await openConfirm({
-    title: 'Delete quarantined files',
-    body: `This permanently removes the quarantined files for ${plan.planId}. Playback has been verified on every kept file. There is no undo.`,
+    title: 'Apply final cleanup',
+    body: `This restores ${issueCount} issue-marked movie${issueCount === 1 ? '' : 's'} and permanently deletes the approved quarantined duplicates for ${plan.planId}. There is no undo.`,
     word: 'DELETE',
-    goLabel: 'Delete permanently',
+    goLabel: 'Apply cleanup',
     danger: true
   });
   if (!ok) return;
 
-  setBusy(true, 'Approving delete');
+  setBusy(true, 'Applying cleanup');
   try {
     const payload = await apiFetch('/api/plex/duplicates/final-delete-approval', {
       method: 'POST',
@@ -1181,7 +1117,7 @@ async function recordFinalDeleteApproval(plan) {
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
     setConnection('Online', 'good');
-    toast('Final delete completed.');
+    toast('Final cleanup completed.');
   } catch (error) {
     setConnection('Error', 'bad');
     els.commandState.textContent = error.message;
