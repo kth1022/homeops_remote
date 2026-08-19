@@ -40,6 +40,8 @@ namespace HomeOpsRemote
         private readonly string configPath = Path.Combine(RemoteRoot, @"config\homeops.remote.json");
         private readonly string tokenPath = Path.Combine(RemoteRoot, @"config\homeops.remote.token.txt");
         private readonly string logPath = Path.GetFullPath(Path.Combine(RemoteRoot, @"..\logs\homeops-remote-tray.log"));
+        private readonly string trayIconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "homeops-remote.ico");
+        private readonly Icon trayIconImage;
         private readonly NotifyIcon trayIcon;
         private readonly System.Windows.Forms.Timer monitorTimer;
         private Process nodeProcess;
@@ -49,10 +51,11 @@ namespace HomeOpsRemote
         public TrayContext()
         {
             Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+            trayIconImage = LoadTrayIcon();
 
             trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = trayIconImage,
                 Text = "HomeOps Remote",
                 Visible = true,
                 ContextMenuStrip = BuildMenu()
@@ -63,6 +66,29 @@ namespace HomeOpsRemote
             monitorTimer = new System.Windows.Forms.Timer { Interval = 10000 };
             monitorTimer.Tick += delegate { MonitorBackend(); };
             monitorTimer.Start();
+        }
+
+        private Icon LoadTrayIcon()
+        {
+            try
+            {
+                if (File.Exists(trayIconPath))
+                {
+                    return new Icon(trayIconPath, SystemInformation.SmallIconSize);
+                }
+
+                Icon embedded = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (embedded != null)
+                {
+                    return embedded;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("Tray icon load failed: " + ex.Message);
+            }
+
+            return (Icon)SystemIcons.Application.Clone();
         }
 
         private ContextMenuStrip BuildMenu()
@@ -258,6 +284,7 @@ namespace HomeOpsRemote
             {
                 monitorTimer.Dispose();
                 trayIcon.Dispose();
+                trayIconImage.Dispose();
             }
             base.Dispose(disposing);
         }
