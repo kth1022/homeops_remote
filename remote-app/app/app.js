@@ -8,7 +8,6 @@ const state = {
   busyRows: new Set(),
   lastStatus: null,
   plexDuplicateFilter: localStorage.getItem('homeops.plexDuplicateFilter') || 'all',
-  plexCleanupPreview: null,
   cleanupProgress: null,
   cleanupProgressTimer: null,
   silenced: readSilenced(),
@@ -33,7 +32,7 @@ for (const id of [
   'lastHomeopsRun', 'lastHaRun', 'systemsHeadline', 'systemsList', 'haHeadline', 'haSub', 'haEntities',
   'haUnavailable', 'batteryState', 'haServices', 'haFindings', 'quickActions', 'commandForm', 'commandText',
   'sendCommand', 'queueMessage', 'plexHeadline', 'plexDupHeadline', 'plexDupMeta', 'plexDupState',
-  'scanPlexDuplicates', 'previewPlexDuplicates', 'approvePlexDuplicates', 'plexDupVisible', 'plexApprovalState',
+  'scanPlexDuplicates', 'scanPlexDuplicatesPage', 'approvePlexDuplicates', 'plexDupVisible', 'plexApprovalState',
   'plexStagedDetail', 'plexCleanupPlan', 'plexDupList', 'activityList', 'activityCount', 'endpointList',
   'connHeadline', 'confirmBackdrop', 'confirmTitle', 'confirmBody', 'confirmRows', 'confirmField',
   'confirmPromptLabel', 'confirmWord', 'confirmCancel', 'confirmGo', 'toast', 'systemRowTemplate',
@@ -530,7 +529,7 @@ function renderPlexDuplicates(report) {
     ? 'Files move to quarantine, then Plex rescans.'
     : 'Approve or swap a row to stage it.';
 
-  els.previewPlexDuplicates.disabled = state.busy || !report?.path || approvedCount === 0;
+  els.scanPlexDuplicatesPage.disabled = state.busy;
   els.approvePlexDuplicates.disabled = state.busy || !report?.path || approvedCount === 0;
   els.plexDupVisible.textContent = rows.length ? `showing ${visibleRows.length} of ${rows.length}` : '-';
 
@@ -544,7 +543,7 @@ function renderPlexDuplicates(report) {
     chip.textContent = `${filter === 'manual-review' ? 'manual review' : filter} ${count}`;
   }
 
-  const displayPlan = report?.cleanupPlan || state.plexCleanupPreview;
+  const displayPlan = report?.cleanupPlan;
   renderPlexCleanupPlan(displayPlan);
   if (isCleanupRunning(report?.cleanupPlan)) startCleanupProgressPolling();
   else stopCleanupProgressPolling();
@@ -961,7 +960,6 @@ async function setPlexDuplicateDecision(rowId, action, reason = '') {
       method: 'POST',
       body: JSON.stringify({ rowId, action, reason })
     });
-    state.plexCleanupPreview = null;
     setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
@@ -973,29 +971,6 @@ async function setPlexDuplicateDecision(rowId, action, reason = '') {
     toast(error.message);
   } finally {
     setRowBusy(rowId, false);
-    renderLatestPlexReport();
-  }
-}
-
-async function previewPlexCleanupPlan() {
-  const report = state.lastStatus?.plexDuplicates;
-  if (state.busy || !report?.path) return;
-  setBusy(true, 'Previewing');
-  try {
-    const payload = await apiFetch('/api/plex/duplicates/cleanup-preview', {
-      method: 'POST',
-      body: JSON.stringify({ reportPath: report.path })
-    });
-    state.plexCleanupPreview = payload.plan || null;
-    setLatestPlexReport(payload.report);
-    setConnection('Online', 'good');
-    toast(`Previewed ${payload.plan?.moveCount || 0} quarantine move${payload.plan?.moveCount === 1 ? '' : 's'}.`);
-  } catch (error) {
-    setConnection('Error', 'bad');
-    els.commandState.textContent = error.message;
-    toast(error.message);
-  } finally {
-    setBusy(false);
     renderLatestPlexReport();
   }
 }
@@ -1024,7 +999,6 @@ async function finalizePlexCleanupPlan() {
       method: 'POST',
       body: JSON.stringify({ reportPath: report.path, confirm: 'QUARANTINE' })
     });
-    state.plexCleanupPreview = null;
     setLatestPlexReport(payload.report);
     const history = await apiFetch('/api/commands');
     renderActivity(history.commands);
@@ -1160,10 +1134,11 @@ els.saveSettings.addEventListener('click', saveSettings);
 els.refreshStatus.addEventListener('click', loadStatus);
 els.refreshStatus2.addEventListener('click', loadStatus);
 els.scanPlexDuplicates.addEventListener('click', () => {
-  state.plexCleanupPreview = null;
   sendCommand({ action: 'plex.duplicates.scan', text: 'Plex duplicate movie scan' });
 });
-els.previewPlexDuplicates.addEventListener('click', previewPlexCleanupPlan);
+els.scanPlexDuplicatesPage.addEventListener('click', () => {
+  sendCommand({ action: 'plex.duplicates.scan', text: 'Plex duplicate movie scan' });
+});
 els.approvePlexDuplicates.addEventListener('click', finalizePlexCleanupPlan);
 els.queueMessage.addEventListener('click', () => {
   const text = els.commandText.value.trim();

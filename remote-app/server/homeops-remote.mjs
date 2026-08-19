@@ -682,16 +682,16 @@ async function getStatusPayload() {
 
 function getActionManifest() {
   return [
-    { id: "homeops.check", label: "HomeOps Check", description: "Refresh router, TrueNAS/Plex, and Home Assistant reachability.", mutating: false },
-    { id: "homeassistant.monitor", label: "Home Assistant Monitor", description: "Refresh Home Assistant API, entity, service, and battery summary.", mutating: false },
-    { id: "lan.inventory", label: "LAN Inventory", description: "Scan known LAN service ports and write an inventory report.", mutating: false },
-    { id: "plex.duplicates.scan", label: "Plex Duplicates", description: "Scan Plex movie libraries and refresh the duplicate movie report.", mutating: false },
+    { id: "homeops.check", label: "HomeOps Check", description: "Refresh router, TrueNAS/Plex, and Home Assistant reachability.", mutating: false, enabled: true },
+    { id: "homeassistant.monitor", label: "Home Assistant Monitor", description: "Refresh Home Assistant API, entity, service, and battery summary.", mutating: false, enabled: true },
+    { id: "lan.inventory", label: "LAN Inventory", description: "Scan known LAN service ports and write an inventory report.", mutating: false, enabled: true },
+    { id: "plex.duplicates.scan", label: "Plex Duplicates", description: "Scan Plex movie libraries and refresh the duplicate movie report.", mutating: false, enabled: true },
     { id: "plex.duplicates.finalize-cleanup", label: "Plex Quarantine", description: "Move approved duplicate candidates to quarantine only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "plex.duplicates.restore-item", label: "Plex Restore", description: "Restore a quarantined duplicate only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "plex.duplicates.final-delete-approval", label: "Plex Final Cleanup", description: "Restore issue-marked movies and delete approved quarantine files only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
-    { id: "homeassistant.service.dryrun", label: "HA Service Dry Run", description: "Prepare a Home Assistant service call without applying it.", mutating: false },
+    { id: "homeassistant.service.dryrun", label: "HA Service Dry Run", description: "Prepare a Home Assistant service call without applying it.", mutating: false, enabled: true },
     { id: "homeassistant.service.apply", label: "HA Service Apply", description: "Apply a Home Assistant service call only when local config permits it.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
-    { id: "message", label: "Message", description: "Record a remote instruction for review.", mutating: false }
+    { id: "message", label: "Message", description: "Record a remote instruction for review.", mutating: false, enabled: true }
   ];
 }
 
