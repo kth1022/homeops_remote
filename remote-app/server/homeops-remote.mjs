@@ -614,7 +614,8 @@ async function readJsonBody(req) {
 async function serveStatic(res, requestPath) {
   const pathname = decodeURIComponent(requestPath === "/" ? "/index.html" : requestPath);
   const fullPath = path.resolve(appRoot, `.${pathname}`);
-  if (!fullPath.startsWith(appRoot)) {
+  const relativePath = path.relative(appRoot, fullPath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     sendText(res, 403, "Forbidden");
     return;
   }
@@ -685,10 +686,19 @@ function getActionManifest() {
     { id: "homeassistant.monitor", label: "Home Assistant Monitor", description: "Refresh Home Assistant API, entity, service, and battery summary.", mutating: false },
     { id: "lan.inventory", label: "LAN Inventory", description: "Scan known LAN service ports and write an inventory report.", mutating: false },
     { id: "plex.duplicates.scan", label: "Plex Duplicates", description: "Scan Plex movie libraries and refresh the duplicate movie report.", mutating: false },
+    { id: "plex.duplicates.finalize-cleanup", label: "Plex Quarantine", description: "Move approved duplicate candidates to quarantine only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
+    { id: "plex.duplicates.restore-item", label: "Plex Restore", description: "Restore a quarantined duplicate only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
+    { id: "plex.duplicates.final-delete-approval", label: "Plex Final Delete", description: "Delete quarantined files only when local config permits mutating actions.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "homeassistant.service.dryrun", label: "HA Service Dry Run", description: "Prepare a Home Assistant service call without applying it.", mutating: false },
     { id: "homeassistant.service.apply", label: "HA Service Apply", description: "Apply a Home Assistant service call only when local config permits it.", mutating: true, enabled: Boolean(config.allowMutatingActions) },
     { id: "message", label: "Message", description: "Record a remote instruction for review.", mutating: false }
   ];
+}
+
+function assertMutatingActionsAllowed(actionLabel) {
+  if (!config.allowMutatingActions) {
+    throw new Error(`${actionLabel} is disabled because allowMutatingActions is false in the local HomeOps Remote config.`);
+  }
 }
 
 async function getPlexDuplicateReport() {
@@ -1858,6 +1868,7 @@ async function finalizePlexDuplicateCleanupPlan(body, remoteAddress) {
   if (stringValue(body.confirm) !== "QUARANTINE") {
     throw new Error("Quarantine requires confirm=QUARANTINE.");
   }
+  assertMutatingActionsAllowed("Plex duplicate quarantine");
 
   const activePlan = (await getPlexCleanupPlanDocuments()).find(isPlexCleanupPlanOpen);
   if (activePlan) {
@@ -2089,6 +2100,7 @@ async function restorePlexCleanupVerificationItem(body, remoteAddress) {
   if (stringValue(body.confirm) !== "RESTORE") {
     throw new Error("Playback restore requires confirm=RESTORE.");
   }
+  assertMutatingActionsAllowed("Plex duplicate restore");
 
   const plan = JSON.parse(stripBom(await readFile(planPath, "utf8")));
   const requestedPlanId = stringValue(body.planId || plan.planId);
@@ -2188,6 +2200,7 @@ async function recordPlexFinalDeleteApproval(body, remoteAddress) {
   if (body.verificationComplete !== true) {
     throw new Error("Final delete approval requires verificationComplete=true.");
   }
+  assertMutatingActionsAllowed("Plex final delete");
 
   const plan = JSON.parse(stripBom(await readFile(planPath, "utf8")));
   const requestedPlanId = stringValue(body.planId || plan.planId);
