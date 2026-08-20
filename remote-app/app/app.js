@@ -140,6 +140,7 @@ function setBusy(isBusy, label = 'Working', scope = null) {
   els.commandState.textContent = isBusy ? label : 'Idle';
   const buttons = scope ? scope.querySelectorAll('button') : [];
   for (const button of buttons) button.disabled = isBusy;
+  renderLatestPlexReport();
 }
 
 function setRowBusy(rowId, isBusy) {
