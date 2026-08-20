@@ -10,6 +10,7 @@ const state = {
   plexDuplicateFilter: localStorage.getItem('homeops.plexDuplicateFilter') || 'all',
   cleanupProgress: null,
   cleanupProgressTimer: null,
+  haFocus: '',
   silenced: readSilenced(),
   endpointStates: {}
 };
@@ -114,7 +115,8 @@ function setConnection(label, tone) {
   els.connHeadline.textContent = tone === 'good' ? 'Connected to the control PC.' : `Connection: ${label}.`;
 }
 
-function setScreen(id) {
+function setScreen(id, options = {}) {
+  if (id === 'ha' && options.focus) state.haFocus = options.focus;
   state.screen = id;
   localStorage.setItem('homeops.screen', id);
   for (const section of document.querySelectorAll('.screen')) {
@@ -124,6 +126,12 @@ function setScreen(id) {
     button.classList.toggle('active', button.dataset.screen === id);
   }
   window.scrollTo(0, 0);
+  if (id === 'ha' && state.haFocus) {
+    window.setTimeout(() => {
+      const target = document.querySelector(`[data-ha-section="${state.haFocus}"]`);
+      if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 60);
+  }
 }
 
 /* Only the acting control goes quiet - the rest of the page stays usable. */
@@ -252,7 +260,22 @@ function deriveAlerts(payload) {
   const homeopsData = payload.homeops?.data || {};
   const haData = payload.homeassistant?.data || {};
   const devices = toArray(homeopsData.devices);
+  const storageFindings = toArray(homeopsData.truenasStorage?.findings);
   const unhealthy = devices.filter((device) => !device.healthy);
+
+  if (storageFindings.length && !state.silenced.truenasStorage) {
+    const finding = storageFindings[0];
+    alerts.push({
+      key: 'truenasStorage',
+      tone: 'bad',
+      sev: 'Critical',
+      meta: `TrueNAS storage - ${formatTime(homeopsData.truenasStorage?.generatedAt)}`,
+      title: finding.title || 'TrueNAS storage needs attention',
+      detail: finding.detail || 'A storage health report found a critical issue.',
+      primaryLabel: 'See system',
+      primary: () => setScreen('systems')
+    });
+  }
 
   for (const device of unhealthy) {
     const key = `device:${device.name}`;
@@ -284,7 +307,7 @@ function deriveAlerts(payload) {
         ? 'It has not dropped off yet. Replacing it now avoids an unavailable entity later.'
         : 'None have dropped off yet. Replacing them now avoids an unavailable entity later.',
       primaryLabel: 'See entities',
-      primary: () => setScreen('ha')
+      primary: () => setScreen('ha', { focus: 'battery' })
     });
   }
 
@@ -298,7 +321,7 @@ function deriveAlerts(payload) {
       title: `${count} entit${count === 1 ? 'y is' : 'ies are'} not reporting`,
       detail: 'Unavailable or unknown since the last monitor run.',
       primaryLabel: 'See entities',
-      primary: () => setScreen('ha')
+      primary: () => setScreen('ha', { focus: 'unavailable' })
     });
   }
 
@@ -309,6 +332,7 @@ function renderVerdict(payload, alerts) {
   const homeopsData = payload.homeops?.data || {};
   const devices = toArray(homeopsData.devices);
   const unhealthy = devices.filter((device) => !device.healthy);
+  const storageIssues = toArray(homeopsData.truenasStorage?.findings).length;
   const bad = alerts.filter((alert) => alert.tone === 'bad');
 
   let tone = 'good';
@@ -334,8 +358,9 @@ function renderVerdict(payload, alerts) {
   els.verdictBar.style.background = tone === 'bad' ? 'var(--bad)' : tone === 'warn' ? 'var(--warn)' : 'var(--good)';
   els.verdictHeadline.textContent = headline;
   els.verdictSub.textContent = sub;
-  els.systemsHeadline.textContent = unhealthy.length
-    ? `${unhealthy.length} of ${devices.length} system${devices.length === 1 ? '' : 's'} ${unhealthy.length === 1 ? 'needs' : 'need'} a look.`
+  const issueCount = devices.filter((device) => !device.healthy || (device.name === 'truenas' && storageIssues)).length;
+  els.systemsHeadline.textContent = issueCount
+    ? `${issueCount} system issue${issueCount === 1 ? '' : 's'} need a look.`
     : 'All systems healthy.';
 }
 
@@ -379,14 +404,15 @@ function renderQuiet(payload, alerts) {
   const homeopsData = payload.homeops?.data || {};
   const haData = payload.homeassistant?.data || {};
   const devices = toArray(homeopsData.devices);
-  const unhealthy = devices.filter((device) => !device.healthy).length;
+  const storageIssues = toArray(homeopsData.truenasStorage?.findings).length;
+  const unhealthy = devices.filter((device) => !device.healthy || (device.name === 'truenas' && storageIssues)).length;
   const commandCount = Number(els.activityCount.textContent || 0);
 
   const rows = [
     {
       screen: 'systems',
       label: 'Systems',
-      detail: `${devices.length - unhealthy} of ${devices.length} healthy`,
+      detail: storageIssues ? `TrueNAS storage critical - ${devices.length} systems reachable` : `${devices.length - unhealthy} of ${devices.length} healthy`,
       tone: unhealthy ? 'warn' : 'good'
     },
     {
@@ -415,6 +441,8 @@ function renderQuiet(payload, alerts) {
 
 function renderSystems(homeops) {
   const devices = toArray(homeops?.data?.devices);
+  const truenasStorage = homeops?.data?.truenasStorage || null;
+  const truenasCritical = truenasStorage && toArray(truenasStorage.findings).length > 0;
   els.systemsList.replaceChildren();
   els.navBadgeSystems.textContent = '';
 
@@ -423,27 +451,118 @@ function renderSystems(homeops) {
     return;
   }
 
-  const unhealthy = devices.filter((device) => !device.healthy).length;
+  const unhealthy = devices.filter((device) => !device.healthy || (device.name === 'truenas' && truenasCritical)).length;
   if (unhealthy) els.navBadgeSystems.textContent = String(unhealthy);
 
   for (const device of devices) {
+    const storageFindings = device.name === 'truenas' ? toArray(truenasStorage?.findings) : [];
+    const rowBad = !device.healthy || storageFindings.length > 0;
     const row = els.systemRowTemplate.content.firstElementChild.cloneNode(true);
-    row.querySelector('.dot').className = `dot lg ${device.healthy ? 'good' : 'bad'}`;
+    row.querySelector('.dot').className = `dot lg ${rowBad ? 'bad' : 'good'}`;
     row.querySelector('.system-name').textContent = device.name || 'device';
     row.querySelector('.system-host').textContent = `${device.host || '-'} - ${device.role || 'system'}`;
     const status = row.querySelector('.system-status');
-    status.textContent = device.healthy ? 'healthy' : 'attention';
-    status.className = `system-status ${device.healthy ? 'text-good' : 'text-bad'}`;
+    status.textContent = rowBad ? (storageFindings.length ? 'critical' : 'attention') : 'healthy';
+    status.className = `system-status ${rowBad ? 'text-bad' : 'text-good'}`;
 
     const ports = row.querySelector('.port-list');
     for (const tcp of toArray(device.tcp)) {
       ports.appendChild(el('span', `port ${tcp.open ? '' : 'closed'}`, `${tcp.port} ${tcp.open ? 'open' : 'closed'}`));
+    }
+    if (storageFindings.length) {
+      const findings = el('div', 'system-findings');
+      for (const finding of storageFindings) {
+        const item = el('div', 'system-finding');
+        item.append(el('strong', null, finding.title || 'TrueNAS storage issue'), el('span', null, finding.detail || ''));
+        findings.appendChild(item);
+      }
+      row.appendChild(findings);
     }
     els.systemsList.appendChild(row);
   }
 }
 
 /* ---------------- home assistant ---------------- */
+
+function entityFriendlyName(item) {
+  return item?.attributes?.friendly_name || item?.entity_id || 'entity';
+}
+
+function entityDeviceName(item) {
+  const friendly = entityFriendlyName(item);
+  if (friendly.includes(' Battery')) return friendly.split(' Battery')[0];
+  if (friendly.includes(' battery')) return friendly.split(' battery')[0];
+  if (friendly.includes(' High accuracy')) return friendly.split(' High accuracy')[0];
+  if (friendly.includes(' Connectivity')) return friendly.split(' Connectivity')[0];
+  const entity = String(item?.entity_id || '').replace(/^[^.]+\./, '').replace(/_\d+$/, '');
+  const parts = entity.split('_').filter(Boolean);
+  if (parts.length > 2) return titleCase(parts.slice(0, -1).join(' '));
+  if (parts.length) return titleCase(parts.join(' '));
+  return 'Unassigned device';
+}
+
+function titleCase(value) {
+  return String(value || '').replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+function groupEntitiesByDevice(items) {
+  const groups = new Map();
+  for (const item of toArray(items)) {
+    const name = entityDeviceName(item);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(item);
+  }
+  return [...groups.entries()]
+    .map(([name, entities]) => ({ name, entities }))
+    .sort((a, b) => b.entities.length - a.entities.length || a.name.localeCompare(b.name));
+}
+
+function renderEntityRow(item) {
+  const row = el('div', 'line-row');
+  const bad = item.state === 'unavailable';
+  row.append(
+    el('span', `dot ${bad ? 'bad' : 'warn'}`),
+    el('span', 'line-name', entityFriendlyName(item)),
+    el('span', 'line-meta', item.entity_id),
+    el('span', `line-state ${bad ? 'text-bad' : 'text-warn'}`, item.state)
+  );
+  return row;
+}
+
+function renderEntitySection({ key, title, summary, items, empty, grouped = false }) {
+  const section = el('section', 'ha-report-section');
+  section.dataset.haSection = key;
+  section.append(el('div', 'section-label', title));
+  if (summary) section.append(el('p', 'subtle', summary));
+
+  if (!items.length) {
+    section.appendChild(el('p', 'subtle', empty));
+    return section;
+  }
+
+  if (!grouped) {
+    const list = el('div', 'line-list wide');
+    for (const item of items) list.appendChild(renderEntityRow(item));
+    section.appendChild(list);
+    return section;
+  }
+
+  const list = el('div', 'device-issue-list');
+  for (const group of groupEntitiesByDevice(items)) {
+    const details = el('details', 'device-issue');
+    const summaryRow = el('summary', null);
+    summaryRow.append(
+      el('span', 'device-name', group.name),
+      el('span', 'device-count', `${group.entities.length} entit${group.entities.length === 1 ? 'y' : 'ies'}`)
+    );
+    const entityList = el('div', 'line-list wide');
+    for (const item of group.entities) entityList.appendChild(renderEntityRow(item));
+    details.append(summaryRow, entityList);
+    list.appendChild(details);
+  }
+  section.appendChild(list);
+  return section;
+}
 
 function renderHomeAssistant(homeassistant) {
   const data = homeassistant?.data || {};
@@ -460,25 +579,26 @@ function renderHomeAssistant(homeassistant) {
   els.haSub.textContent = `Home Assistant ${data.version || '-'} is ${(data.apiMessage || 'unknown').toLowerCase()} and serving ${data.serviceDomainCount ?? '-'} service domains.`;
   els.navBadgeHa.textContent = unavailable ? String(unavailable) : '';
 
-  const problemStates = toArray(data.unavailableOrUnknown).slice(0, 20);
+  const problemStates = toArray(data.unavailableOrUnknown);
+  const lowBattery = toArray(data.lowBattery);
   els.haFindings.replaceChildren();
-  if (!problemStates.length) {
-    els.haFindings.appendChild(el('p', 'subtle', 'No unavailable or unknown entities in the latest report.'));
-    return;
-  }
-
-  for (const item of problemStates) {
-    const row = el('div', 'line-row');
-    const friendly = item.attributes?.friendly_name || item.entity_id;
-    const bad = item.state === 'unavailable';
-    row.append(
-      el('span', `dot ${bad ? 'bad' : 'warn'}`),
-      el('span', 'line-name', friendly),
-      el('span', 'line-meta', item.entity_id),
-      el('span', `line-state ${bad ? 'text-bad' : 'text-warn'}`, item.state)
-    );
-    els.haFindings.appendChild(row);
-  }
+  els.haFindings.append(
+    renderEntitySection({
+      key: 'battery',
+      title: 'Low battery',
+      summary: lowBattery.length ? `${lowBattery.length} battery sensor${lowBattery.length === 1 ? '' : 's'} below threshold.` : '',
+      items: lowBattery,
+      empty: 'No low battery entities in the latest report.'
+    }),
+    renderEntitySection({
+      key: 'unavailable',
+      title: 'Unavailable or unknown by device',
+      summary: problemStates.length ? `${problemStates.length} entities grouped by the device or integration name reported by Home Assistant.` : '',
+      items: problemStates,
+      empty: 'No unavailable or unknown entities in the latest report.',
+      grouped: true
+    })
+  );
 }
 
 /* ---------------- plex duplicates ---------------- */
@@ -825,7 +945,7 @@ function stopCleanupProgressPolling() {
 
 function renderActions(actions) {
   const quick = toArray(actions).filter((action) => {
-    return ['homeops.check', 'homeassistant.monitor', 'lan.inventory', 'plex.duplicates.scan'].includes(action.id);
+    return ['homeops.refresh-all', 'homeops.check', 'homeassistant.monitor', 'lan.inventory', 'plex.duplicates.scan'].includes(action.id);
   });
   els.quickActions.replaceChildren();
   for (const action of quick) {
@@ -850,7 +970,8 @@ function renderActivity(commands) {
   for (const command of rows) {
     const item = el('li', 'activity-item');
     const head = el('div', 'activity-head');
-    const ok = String(command.status || '').toLowerCase() === 'success';
+    const statusText = String(command.status || '').toLowerCase();
+    const ok = ['success', 'completed', 'queued_for_review'].includes(statusText);
     head.append(
       el('span', `dot ${ok ? 'good' : 'bad'}`),
       el('span', 'activity-action', command.action || 'message'),
@@ -941,7 +1062,8 @@ async function sendCommand(command) {
     await refreshAfter(payload);
     els.commandText.value = '';
     setConnection('Online', 'good');
-    toast(`${command.action || 'message'} finished.`);
+    const failedCount = Number(payload.command?.result?.failedCount || 0);
+    toast(failedCount ? `${command.action || 'message'} finished with ${failedCount} warning${failedCount === 1 ? '' : 's'}.` : `${command.action || 'message'} finished.`);
   } catch (error) {
     setConnection('Error', 'bad');
     els.commandState.textContent = error.message;
@@ -949,6 +1071,10 @@ async function sendCommand(command) {
   } finally {
     setBusy(false);
   }
+}
+
+async function refreshAllReports() {
+  return sendCommand({ action: 'homeops.refresh-all', text: 'Refresh all HomeOps Remote reports' });
 }
 
 async function setPlexDuplicateDecision(rowId, action, reason = '') {
@@ -1131,8 +1257,8 @@ for (const chip of document.querySelectorAll('.chip')) {
 }
 
 els.saveSettings.addEventListener('click', saveSettings);
-els.refreshStatus.addEventListener('click', loadStatus);
-els.refreshStatus2.addEventListener('click', loadStatus);
+els.refreshStatus.addEventListener('click', refreshAllReports);
+els.refreshStatus2.addEventListener('click', refreshAllReports);
 els.scanPlexDuplicates.addEventListener('click', () => {
   sendCommand({ action: 'plex.duplicates.scan', text: 'Plex duplicate movie scan' });
 });

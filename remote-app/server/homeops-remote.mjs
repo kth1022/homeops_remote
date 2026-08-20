@@ -682,6 +682,7 @@ async function getStatusPayload() {
 
 function getActionManifest() {
   return [
+    { id: "homeops.refresh-all", label: "Refresh All Reports", description: "Run the HomeOps, Home Assistant, and Plex reports shown in the dashboard.", mutating: false, enabled: true },
     { id: "homeops.check", label: "HomeOps Check", description: "Refresh router, TrueNAS/Plex, and Home Assistant reachability.", mutating: false, enabled: true },
     { id: "homeassistant.monitor", label: "Home Assistant Monitor", description: "Refresh Home Assistant API, entity, service, and battery summary.", mutating: false, enabled: true },
     { id: "lan.inventory", label: "LAN Inventory", description: "Scan known LAN service ports and write an inventory report.", mutating: false, enabled: true },
@@ -2525,6 +2526,7 @@ async function getCompactHomeOpsReport() {
   const report = await getLatestJsonReport(/^homeops-\d{8}-\d{6}\.json$/);
   if (!report?.data) return report;
   const data = report.data;
+  const truenasStorage = await getLatestTrueNasFaultReport();
   report.data = {
     generatedAt: data.generatedAt,
     computer: data.computer,
@@ -2537,7 +2539,8 @@ async function getCompactHomeOpsReport() {
       tcp: asArray(device.tcp).map((tcp) => ({ port: tcp.port, open: tcp.open, latencyMs: tcp.latencyMs })),
       http: asArray(device.http).map((http) => ({ name: http.name, ok: http.ok, statusCode: http.statusCode, required: http.required })),
       findings: asArray(device.findings)
-    }))
+    })),
+    truenasStorage
   };
   return report;
 }
@@ -2556,8 +2559,8 @@ async function getCompactHomeAssistantReport() {
     serviceDomainCount: data.serviceDomainCount,
     unavailableOrUnknownCount: data.unavailableOrUnknownCount,
     lowBatteryCount: data.lowBatteryCount,
-    unavailableOrUnknown: asArray(data.unavailableOrUnknown).slice(0, 24).map(compactEntityState),
-    lowBattery: asArray(data.lowBattery).slice(0, 24).map(compactEntityState)
+    unavailableOrUnknown: asArray(data.unavailableOrUnknown).map(compactEntityState),
+    lowBattery: asArray(data.lowBattery).map(compactEntityState)
   };
   return report;
 }
@@ -2567,9 +2570,88 @@ function compactEntityState(state) {
     entity_id: state.entity_id,
     state: state.state,
     attributes: {
-      friendly_name: state.attributes?.friendly_name
+      friendly_name: state.attributes?.friendly_name,
+      device_class: state.attributes?.device_class,
+      area_id: state.attributes?.area_id
     }
   };
+}
+
+async function getLatestTrueNasFaultReport() {
+  if (!existsSync(reportsRoot)) return null;
+  const names = await readdir(reportsRoot);
+  const files = names
+    .filter((name) => /^truenas-.*fault.*\.(?:log|txt)$/i.test(name))
+    .map((name) => {
+      const fullPath = path.join(reportsRoot, name);
+      return { fullPath, mtimeMs: statSync(fullPath).mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  if (!files.length) return null;
+
+  const file = files[0];
+  const text = await readFile(file.fullPath, "utf8");
+  const lines = text.split(/\r?\n/);
+  const findings = [];
+  let currentPool = "";
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const poolMatch = /^\s*pool:\s+(.+?)\s*$/.exec(line);
+    if (poolMatch) currentPool = poolMatch[1].trim();
+
+    const stateMatch = /^\s*state:\s+(.+?)\s*$/.exec(line);
+    if (stateMatch && !["ONLINE", "HEALTHY"].includes(stateMatch[1].trim().toUpperCase())) {
+      findings.push({
+        severity: "critical",
+        pool: currentPool,
+        title: `${currentPool || "TrueNAS pool"} is ${stateMatch[1].trim()}`,
+        detail: nextMeaningfulLine(lines, index + 1)
+      });
+    }
+
+    if (/\bFAULTED\b/i.test(line)) {
+      findings.push({
+        severity: "critical",
+        pool: currentPool,
+        title: `${currentPool || "TrueNAS"} has a faulted device`,
+        detail: line.trim().replace(/\s+/g, " ")
+      });
+    }
+
+    if (/\bdata errors?\b/i.test(line) && !/No known data errors/i.test(line)) {
+      findings.push({
+        severity: "critical",
+        pool: currentPool,
+        title: `${currentPool || "TrueNAS pool"} has data errors`,
+        detail: line.trim().replace(/\s+/g, " ")
+      });
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const finding of findings) {
+    const key = `${finding.title}|${finding.detail}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(finding);
+  }
+
+  return {
+    path: file.fullPath,
+    generatedAt: new Date(file.mtimeMs).toISOString(),
+    healthy: unique.length === 0,
+    findings: unique.slice(0, 8)
+  };
+}
+
+function nextMeaningfulLine(lines, start) {
+  for (let index = start; index < lines.length; index += 1) {
+    const value = String(lines[index] || "").trim();
+    if (value) return value.replace(/\s+/g, " ");
+  }
+  return "";
 }
 
 async function getLatestJsonReport(namePattern) {
@@ -2622,7 +2704,10 @@ async function invokeRemoteCommand(body, remoteAddress) {
   };
 
   try {
-    if (action === "homeops.check") {
+    if (action === "homeops.refresh-all") {
+      entry.result = await runRefreshAllReports();
+      entry.status = "completed";
+    } else if (action === "homeops.check") {
       entry.result = await runPowerShellScript("Invoke-HomeOpsCheck.ps1", [], 120_000);
       entry.status = "completed";
     } else if (action === "homeassistant.monitor") {
@@ -2632,7 +2717,7 @@ async function invokeRemoteCommand(body, remoteAddress) {
       entry.result = await runPowerShellScript("Invoke-LanInventory.ps1", [], 240_000);
       entry.status = "completed";
     } else if (action === "plex.duplicates.scan") {
-      entry.result = await runNodeScript("Find-PlexDuplicateMovies.js", [], 180_000);
+      entry.result = await runPlexDuplicateScanWithRetry();
       entry.status = "completed";
     } else if (action === "homeassistant.service.dryrun") {
       entry.result = await runHomeAssistantService(body, false);
@@ -2656,11 +2741,67 @@ async function invokeRemoteCommand(body, remoteAddress) {
 function resolveRequestedAction(body) {
   if (stringValue(body.action)) return stringValue(body.action);
   const text = stringValue(body.text).toLowerCase();
+  if (/refresh/.test(text) && /(all|everything|reports)/.test(text)) return "homeops.refresh-all";
   if (/(home\s*assistant|(^|\s)ha(\s|$))/.test(text) && /(check|health|monitor|status|refresh)/.test(text)) return "homeassistant.monitor";
   if (/plex/.test(text) && /(duplicate|duplicates|dupe|dupes)/.test(text) && /(scan|check|refresh|report)/.test(text)) return "plex.duplicates.scan";
   if (/(inventory|scan)/.test(text)) return "lan.inventory";
   if (/(health|status|check|refresh)/.test(text)) return "homeops.check";
   return "message";
+}
+
+async function runRefreshAllReports() {
+  const startedAt = new Date();
+  const steps = [];
+
+  for (const step of [
+    { action: "homeops.check", script: () => runPowerShellScript("Invoke-HomeOpsCheck.ps1", [], 120_000) },
+    { action: "homeassistant.monitor", script: () => runPowerShellScript("Invoke-HomeAssistantMonitor.ps1", [], 120_000) },
+    { action: "plex.duplicates.scan", script: () => runPlexDuplicateScanWithRetry() }
+  ]) {
+    const stepStartedAt = new Date().toISOString();
+    try {
+      const result = await step.script();
+      steps.push({ action: step.action, status: "completed", startedAt: stepStartedAt, finishedAt: new Date().toISOString(), result });
+    } catch (error) {
+      steps.push({ action: step.action, status: "failed", startedAt: stepStartedAt, finishedAt: new Date().toISOString(), error: error.message });
+    }
+  }
+
+  const failed = steps.filter((step) => step.status === "failed");
+
+  return {
+    script: "homeops.refresh-all",
+    startedAt: startedAt.toISOString(),
+    finishedAt: new Date().toISOString(),
+    exitCode: failed.length ? 1 : 0,
+    output: steps.map((step) => `${step.action}: ${step.status}${step.error ? ` - ${step.error}` : ""}`).join("\n"),
+    failedCount: failed.length,
+    steps
+  };
+}
+
+async function runPlexDuplicateScanWithRetry() {
+  const attempts = [];
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await runNodeScript("Find-PlexDuplicateMovies.js", [], 300_000);
+      if (attempts.length) {
+        result.retried = true;
+        result.attempts = attempts;
+      }
+      return result;
+    } catch (error) {
+      attempts.push({ attempt, error: error.message });
+      if (!isTrueNasClosedFileError(error) || attempt === maxAttempts) throw error;
+      await sleep(2000 * attempt);
+    }
+  }
+  throw new Error("Plex duplicate scan failed.");
+}
+
+function isTrueNasClosedFileError(error) {
+  return /TrueNAS job \d+ FAILED: I\/O operation on closed file/i.test(String(error?.message || error));
 }
 
 async function runHomeAssistantService(body, apply) {

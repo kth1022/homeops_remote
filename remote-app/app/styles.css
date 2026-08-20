@@ -394,6 +394,26 @@ h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .system-host { font-size: 11.5px; color: var(--muted-2); }
 .system-status { margin-left: auto; font-size: 12px; }
 
+.system-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+
+.system-finding {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.system-finding strong { color: var(--bad); font-weight: 500; }
+
 .port-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 
 .port {
@@ -420,6 +440,7 @@ h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .stat-value { font-size: 24px; font-weight: 500; }
 
 .line-list { display: flex; flex-direction: column; max-width: 760px; }
+.line-list.wide { max-width: 980px; }
 
 .line-row {
   display: flex;
@@ -433,6 +454,52 @@ h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
 .line-row .line-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .line-row .line-meta { font-size: 11.5px; color: var(--muted-2); }
 .line-row .line-state { min-width: 92px; text-align: right; font-size: 11.5px; }
+
+.ha-report-section {
+  max-width: 980px;
+  margin-top: 22px;
+  scroll-margin-top: 22px;
+}
+
+.ha-report-section > .subtle {
+  margin: -2px 0 8px;
+  font-size: 12px;
+}
+
+.device-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-issue {
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.device-issue summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 10px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.device-issue summary::-webkit-details-marker { display: none; }
+.device-issue summary::before {
+  content: '>';
+  color: var(--muted-2);
+  font-size: 12px;
+  transition: transform 120ms ease;
+}
+
+.device-issue[open] summary::before { transform: rotate(90deg); }
+.device-issue .device-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.device-issue .device-count { flex: 0 0 auto; color: var(--muted-2); font-size: 11.5px; }
+.device-issue .line-list { padding: 0 13px 8px 32px; }
 
 /* ---------- plex duplicates ---------- */
 
